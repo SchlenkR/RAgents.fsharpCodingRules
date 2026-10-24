@@ -25,7 +25,7 @@ The name in the matching casing.
 ## Do not report
 
 - Names fixed by an external contract, such as JSON properties read by reflection.
-- `[<Literal>]` values; they must be PascalCase to match as constants in patterns.
+- `[<Literal>]` values used unqualified in patterns; only PascalCase makes them match as constants.
 
 ## Examples (illustrative, not exhaustive)
 

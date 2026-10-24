@@ -1,6 +1,6 @@
 ---
 id: task-for-dotnet-io
-category: design
+category: async
 check: semantic
 files: ["**/*.{fs,fsx}"]
 sources:

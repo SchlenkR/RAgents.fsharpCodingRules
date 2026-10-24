@@ -10,12 +10,12 @@ sources:
 
 # Nest single-use bindings in their consumer
 
-Declare a function or value that only one function uses inside that function, directly below its head, and move it to module level when a second consumer appears. The smallest scope tells the reader where a helper matters and keeps the module surface small.
+Declare a function or value that only one function uses inside that function, at the top of its body after the locals it depends on, and move it to module level when a second consumer appears. The smallest scope tells the reader where a helper matters and keeps the module surface small.
 
 ## Check
 
 1. For every new or moved module-level `let`, including `let private`: how many functions in the file or project use it?
-2. For every nested helper: does it sit at the top of its consumer's body, not buried in the deepest subexpression or after the code that uses it?
+2. For every nested helper: does it sit after its dependencies and before its users, not buried in the deepest subexpression?
 
 ## Report
 

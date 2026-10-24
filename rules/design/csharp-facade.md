@@ -25,6 +25,7 @@ The signature and where its conversion belongs.
 
 - Libraries designed for C# first, which follow .NET conventions throughout.
 - `Task` and `seq` in F# APIs; both are idiomatic on both sides.
+- Collection interfaces chosen for indexing or ownership, not for C# callers.
 
 ## Examples (illustrative, not exhaustive)
 

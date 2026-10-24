@@ -3,13 +3,14 @@ id: name-the-data
 category: functions
 check: semantic
 files: ["**/*.{fs,fsx}"]
+alternatives: [compose-small-internal-functions]
 sources:
   - "Microsoft F# coding conventions, partial application and point-free programming: https://learn.microsoft.com/en-us/dotnet/fsharp/style-guide/conventions"
 ---
 
 # Name the data instead of composing point-free
 
-Define module-level functions with named, annotated parameters and a pipeline, not as point-free compositions with `>>` or partial applications. Point-free definitions hide argument names and types from tooltips and signatures, produce worse error messages, and cannot be stepped through in a debugger.
+Define module-level functions with named parameters and a pipeline, not as point-free compositions with `>>` or partial applications. Point-free definitions lose parameter names in tooltips and signatures and hide intermediate values from error messages and the debugger.
 
 ## Check
 

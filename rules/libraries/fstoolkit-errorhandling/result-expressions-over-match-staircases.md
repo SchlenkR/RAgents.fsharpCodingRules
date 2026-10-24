@@ -15,8 +15,7 @@ Write a sequence of steps that return `Result`, `Option`, or `Task<Result>` as `
 ## Check
 
 1. Look for `| Error e -> Error e` or `| Error e -> return Error e` followed by a nested match on the next step.
-2. Inside `taskResult`: is a `Result` from a pure function bound with `let!` directly, and an `Option` lifted with `requireSome`?
-3. Are differing error types aligned with `mapError` at the step, not by wrapping the whole expression?
+2. Are differing error types aligned with `mapError` at the step, not by wrapping the whole expression?
 
 ## Report
 
@@ -25,7 +24,7 @@ The staircase and its computation expression form.
 ## Do not report
 
 - A match that does something other than pass the error on, such as a fallback.
-- Functions that return their own state union instead of `Result`; they stay `task` with `match!`.
+- Which expression fits which return type; rule `choose-the-ce-by-result-type` covers that.
 
 ## Examples (illustrative, not exhaustive)
 

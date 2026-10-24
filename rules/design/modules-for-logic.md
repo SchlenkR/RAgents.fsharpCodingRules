@@ -3,6 +3,7 @@ id: modules-for-logic
 category: design
 check: semantic
 files: ["**/*.{fs,fsx}"]
+alternatives: [classes-for-configured-logic]
 sources:
   - "Microsoft F# coding conventions, use classes to contain values that have side effects: https://learn.microsoft.com/en-us/dotnet/fsharp/style-guide/conventions"
   - "Microsoft F# component design guidelines, use classes to encapsulate mutable state: https://learn.microsoft.com/en-us/dotnet/fsharp/style-guide/component-design-guidelines"

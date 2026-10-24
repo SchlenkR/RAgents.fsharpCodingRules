@@ -30,7 +30,7 @@ The signature and its curried or tupled form.
 ## Examples (illustrative, not exhaustive)
 
 ```fsharp
-let addDays (days: int, date: DateOnly) = date.AddDays days // finding: cannot be piped
+let addDays (days: int, date: DateOnly) = date.AddDays days // finding: cannot be partially applied as addDays 30
 
 // correction
 let addDays (days: int) (date: DateOnly) = date.AddDays days

@@ -3,6 +3,7 @@ id: loops-over-compound-folds
 category: functions
 check: semantic
 files: ["**/*.{fs,fsx}"]
+alternatives: [fold-cohesive-state]
 sources:
   - "Don Syme, Notes on learning F#, part 1, why we use fold a lot less: https://github.com/dsyme/dsyme-presentations/blob/master/design-notes/notes-on-learning-fsharp-1.md"
 ---

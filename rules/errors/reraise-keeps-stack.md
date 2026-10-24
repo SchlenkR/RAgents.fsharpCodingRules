@@ -1,7 +1,7 @@
 ---
 id: reraise-keeps-stack
 category: errors
-check: tool
+check: semantic
 files: ["**/*.{fs,fsx}"]
 sources:
   - "FSharpLint FL0073 FavourReRaise: https://github.com/fsprojects/FSharpLint/blob/master/docs/content/how-tos/rules/FL0073.md"
@@ -9,21 +9,20 @@ sources:
 
 # Rethrow with reraise
 
-Rethrow the exception being handled with `reraise ()`, not with `raise ex`, and wrap it in a new exception only to add context, passing the original as the inner exception. `raise ex` restarts the stack trace at the handler, so the log no longer shows where the failure happened.
+Rethrow the exception being handled with `reraise ()`, or with `ExceptionDispatchInfo.Capture(ex).Throw()` inside computation expressions where `reraise` does not compile, and wrap it only to add context, passing the original as inner exception. `raise ex` restarts the stack trace at the handler, so the log no longer shows where the failure happened.
 
 ## Check
 
-1. Look for `raise ex`, `raise e`, or `raise (ex)` inside a `with` handler that refers to the handled exception.
+1. Look for `raise ex` inside a `with` handler that refers to the handled exception; FSharpLint reports it as FL0073.
 2. For every new exception thrown inside a handler: does it pass the original as inner exception?
 
 ## Report
 
-The rethrow and its `reraise ()` or inner-exception form. FSharpLint reports the first case as FL0073.
+The rethrow and its `reraise ()`, `ExceptionDispatchInfo`, or inner-exception form.
 
 ## Do not report
 
-- Throwing a new, unrelated exception after a failure was classified.
-- `reraise` outside a handler, which the compiler already rejects.
+- A new exception unrelated to the handled one, thrown after the failure was classified.
 
 ## Examples (illustrative, not exhaustive)
 
@@ -40,6 +39,15 @@ try
 with ex ->
     logger.LogError(ex, "insert failed")
     reraise ()
+
+// correction inside task { }, where reraise fails with FS0413
+task {
+    try
+        do! Db.insertAsync order
+    with ex ->
+        logger.LogError(ex, "insert failed")
+        ExceptionDispatchInfo.Capture(ex).Throw()
+}
 ```
 
-No finding: `with :? IOException as ex -> raise (InvalidOperationException($"import of {path} failed", ex))`.
+No finding: `raise (InvalidOperationException($"import of {path} failed", ex))`.

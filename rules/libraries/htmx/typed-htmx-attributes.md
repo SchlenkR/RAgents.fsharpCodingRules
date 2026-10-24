@@ -26,7 +26,7 @@ The raw attribute or duplicated literal and the library helper or shared definit
 
 ## Do not report
 
-- Attributes of htmx extensions that the library does not cover, written once in a helper function.
+- Attributes of a custom htmx extension that the helper library lacks, written once in a helper function.
 - Helpers from another library that the project uses on purpose.
 
 ## Examples (illustrative, not exhaustive)
@@ -41,4 +41,4 @@ button [ _hxPost Urls.cartItems; _hxTarget $"#{cartId}" ] [ str "Add" ]
 div [ _id cartId ] [ Cart.view cart ]
 ```
 
-No finding: `attr "hx-ext" "sse"` inside the one helper that renders server-sent event regions.
+No finding: `attr "hx-chart-range" "30d"` for a custom extension, inside the one helper that renders charts.

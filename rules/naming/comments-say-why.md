@@ -29,10 +29,10 @@ The comment and its fix: delete it, or move its information into a name, a type,
 
 ```fsharp
 // Get all unpaid invoices // finding: repeats the code
-let unpaid = invoices |> List.filter (fun invoice -> invoice.paidAt.IsNone)
+let unpaid = invoices |> List.filter _.paidAt.IsNone
 
-// The payment provider rejects amounts with more than two decimals.
-let amount = Math.Round(total, 2)
+// correction: delete the comment, the name already says it
+let unpaid = invoices |> List.filter _.paidAt.IsNone
 ```
 
-No finding: the comment on `Math.Round` above; the constraint is invisible in the code.
+No finding: `// The payment provider rejects amounts with more than two decimals.` above `Math.Round(total, 2)`.

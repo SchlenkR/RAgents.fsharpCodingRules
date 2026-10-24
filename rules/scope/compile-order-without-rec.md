@@ -29,13 +29,16 @@ The recursive scope and the restructuring: reorder, extract the shared type into
 ## Examples (illustrative, not exhaustive)
 
 ```fsharp
-module rec Billing // finding: rec only hides that Invoice is declared after its user
+module rec Billing = // finding: rec only hides that Invoice is declared after its user
+    let total (invoice: Invoice) = invoice.lines |> List.sumBy _.amount
 
-let total (invoice: Invoice) = invoice.lines |> List.sumBy _.amount
+    type Invoice = { lines: InvoiceLine list }
 
-type Invoice = { lines: InvoiceLine list }
+// correction
+module Billing =
+    type Invoice = { lines: InvoiceLine list }
 
-// correction: declare Invoice first and drop rec
+    let total (invoice: Invoice) = invoice.lines |> List.sumBy _.amount
 ```
 
 No finding: `type Expr = ... | Block of Statement list and Statement = ... | Eval of Expr`.

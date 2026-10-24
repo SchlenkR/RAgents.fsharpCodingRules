@@ -27,7 +27,17 @@ let indexPath = Path.Combine(root, "RULES.md")
 let maxProseWords = 170
 
 let categoryOrder =
-    [ "formatting"; "naming"; "scope"; "types"; "functions"; "errors"; "design" ]
+    [
+        "formatting"
+        "naming"
+        "scope"
+        "types"
+        "functions"
+        "errors"
+        "async"
+        "design"
+        "tests"
+    ]
 
 let expectedSections =
     [
@@ -104,14 +114,42 @@ let parseRule (path: string) =
         |> Option.map (fun line -> line.Substring 2)
 
     let core =
-        prose
-        |> List.skipWhile (fun line -> not (line.StartsWith "# "))
-        |> List.skip 1
-        |> List.tryFind (fun line -> line.Trim() <> "")
-        |> Option.map (fun line -> Regex.Match(line, @"^(.+?[.!?])(\s|$)").Groups[1].Value)
-        |> Option.filter (fun sentence -> sentence <> "")
+        match prose |> List.skipWhile (fun line -> not (line.StartsWith "# ")) with
+        | _ :: afterTitle ->
+            afterTitle
+            |> List.tryFind (fun line -> line.Trim() <> "")
+            |> Option.map (fun line -> Regex.Match(line, @"^(.+?[.!?])(\s|$)").Groups[1].Value)
+            |> Option.filter (fun sentence -> sentence <> "")
+        | [] -> None
 
     let sections = prose |> List.filter (fun line -> line.StartsWith "## ")
+
+    let sectionBodies =
+        let mutable bodies = []
+
+        for line in body do
+            match bodies with
+            | _ when line.StartsWith "## " -> bodies <- (line, []) :: bodies
+            | (heading, content) :: rest -> bodies <- (heading, line :: content) :: rest
+            | [] -> ()
+
+        bodies
+        |> List.rev
+        |> List.map (fun (heading, content) -> heading, List.rev content)
+
+    let examples =
+        sectionBodies
+        |> List.tryFind (fun (heading, _) -> heading = List.last expectedSections)
+        |> Option.map snd
+        |> Option.defaultValue []
+
+    let hasExampleLine pattern =
+        examples |> List.exists (fun line -> Regex.IsMatch(line, pattern))
+
+    let fenceCount =
+        body
+        |> List.filter (fun line -> line.TrimStart().StartsWith "```")
+        |> List.length
 
     let proseWords =
         prose
@@ -143,6 +181,19 @@ let parseRule (path: string) =
                 $"sections must be exactly: {expected}"
             if proseWords > maxProseWords then
                 $"{proseWords} words without code, the limit is {maxProseWords}"
+            for heading, content in sectionBodies do
+                if content |> List.forall (fun line -> line.Trim() = "") then
+                    $"section '{heading}' is empty"
+            if fenceCount % 2 <> 0 then
+                "unbalanced code fences"
+            if not (hasExampleLine @"^\s*```") then
+                "examples need a code block"
+            if not (hasExampleLine @"(//|--) finding") then
+                "examples need a violation marked '// finding'"
+            if not (hasExampleLine @"(//|--) correction") then
+                "examples need a correction marked '// correction'"
+            if not (hasExampleLine @"^No finding: ") then
+                "examples need a near-miss line 'No finding: ...'"
         ]
 
     {
@@ -263,7 +314,7 @@ let problems =
             "RULES.md is outdated, run: dotnet fsi scripts/check.fsx"
     ]
 
-if not isVerify then
+if not isVerify && problems.IsEmpty then
     File.WriteAllText(indexPath, index)
 
 for problem in problems do

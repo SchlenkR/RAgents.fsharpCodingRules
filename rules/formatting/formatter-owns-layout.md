@@ -23,17 +23,24 @@ The whitespace-only hunk or hand layout, corrected to the original lines or to F
 
 ## Do not report
 
-- Layout of lines whose content also changed.
+- Whitespace changes that Fantomas makes because nearby content changed.
 - A separate commit that only applies the formatter and says so.
 
 ## Examples (illustrative, not exhaustive)
 
 ```fsharp
--let total = lines |> List.sumBy (fun line -> line.amount)
+-let total = lines |> List.sumBy _.amount
 +let total =
-+    lines |> List.sumBy (fun line -> line.amount) // finding: only re-wrapped
++    lines |> List.sumBy _.amount // finding: only re-wrapped
+
+// correction: keep the line as it was
+let total = lines |> List.sumBy _.amount
 
 let id     = 1 // finding: aligned by hand
+let amount = 20m
+
+// correction
+let id = 1
 let amount = 20m
 ```
 

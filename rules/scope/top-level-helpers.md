@@ -4,13 +4,11 @@ category: scope
 check: semantic
 files: ["**/*.{fs,fsx}"]
 alternatives: [nest-single-use-bindings]
-sources:
-  - "Microsoft F# coding conventions, access control: https://learn.microsoft.com/en-us/dotnet/fsharp/style-guide/conventions"
 ---
 
 # Keep helper functions flat at module level
 
-Declare named helper functions at module level, `private` when they are not part of the module's API, instead of nesting them inside their consumer. Flat helpers can be tested and read on their own, and the consumer's body stays short and shallow.
+Declare named helper functions at module level, directly above their consumer, instead of nesting them inside it. Flat helpers can be tested and read on their own, and the consumer's body stays short and shallow.
 
 ## Check
 
@@ -19,7 +17,7 @@ Declare named helper functions at module level, `private` when they are not part
 
 ## Report
 
-The nested helper, corrected to a module-level `let private` function placed directly above its consumer.
+The nested helper, corrected to a module-level function placed directly above its consumer.
 
 ## Do not report
 
@@ -38,7 +36,7 @@ let summarize orders =
     orders |> List.map describe
 
 // correction
-let private describe order =
+let describe order =
     let total = order.lines |> List.sumBy _.price
     $"{order.id}: {total}"
 

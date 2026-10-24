@@ -21,7 +21,7 @@ The handler and its narrow form at the throwing call, or its removal.
 
 ## Do not report
 
-- The one top-level handler of an application, request pipeline, or background job that logs and keeps running.
+- The top-level handler of an application, request pipeline, or job that logs and applies its failure policy, including ending the process.
 - `use` and `try`/`finally` for cleanup.
 
 ## Examples (illustrative, not exhaustive)

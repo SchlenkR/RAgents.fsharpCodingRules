@@ -5,15 +5,15 @@ check: semantic
 files: ["**/*.{fs,fsx,fsi}"]
 ---
 
-# Abstract only for a second real use
+# Generalize only for a second real use
 
-Introduce a generic type parameter, an interface, a configuration switch, or a shared helper only when a second real use exists, not in anticipation, and let small blocks repeat until then. Speculative abstraction makes the one real case harder to read and guesses a future that rarely arrives as expected.
+Generalize domain code for reuse, with type parameters, interfaces, switches, or shared helpers, only when a second real use exists, and let small incidental blocks repeat until then. Machinery for hypothetical callers makes the one real case harder to read and guesses a future that rarely arrives as expected.
 
 ## Check
 
-1. For every new generic parameter: is the function or type used with at least two different types?
-2. For every new interface, union case, optional parameter, or setting: does code use each alternative?
-3. For every extracted helper: is real logic shared, or only two similar lines?
+1. Does a new abstraction serve consumers that do not exist yet, such as an explicit type parameter used with one type or an interface with one implementation?
+2. Does a new optional parameter, setting, or union case serve a requirement nobody implements?
+3. Does a shared helper parameterize incidental differences between call sites instead of expressing one domain operation?
 
 ## Report
 
@@ -21,8 +21,9 @@ The abstraction and its concrete form.
 
 ## Do not report
 
+- Generic types the compiler inferred.
+- Domain modeling, and helpers extracted to isolate a decision or an effect (rule `io-at-the-edges`).
 - Library APIs meant for unknown callers.
-- Shared domain rules; this rule allows repeating small blocks, not repeating logic.
 
 ## Examples (illustrative, not exhaustive)
 
