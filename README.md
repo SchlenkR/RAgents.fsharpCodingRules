@@ -4,10 +4,8 @@ AI agents write a lot of F# now, and much of it reads like C# in another syntax:
 
 The rules are opinions. Some are common F# practice, some are personal taste, some only matter with one library. That is fine: every rule stands on its own, opposing positions sit side by side, and you pick the rules you agree with. Then add your own.
 
-- [RULES.md](RULES.md): every rule in one line
+- [RULES.md](RULES.md): every rule in one line, generated from the rule files
 - [rules/](rules/): the rule files, by category
-- [prompts/](prompts/): prompts for writing code, reviewing code, and testing rules
-- [CONTRIBUTING.md](CONTRIBUTING.md): how to add a rule or a counter-position
 
 The rules grew out of the F# conventions behind [RAgents](https://github.com/SchlenkR/RAgents), but they are plain Markdown and work with any agent: Claude Code, Codex, GitHub Copilot, Cursor, or a script of your own.
 
@@ -67,13 +65,15 @@ A violation marked `// finding`, its correction, and a near-miss that is fine.
 
 The frontmatter fields:
 
-- `id`: equals the file name; never changes once published.
+- `id`: kebab-case, equals the file name; never changes once published, because other projects copy rules by id.
 - `category`: equals the folder, for example `types` or `libraries/htmx`.
-- `check`: `semantic` needs judgment and goes to a reviewer; `tool` is enforced by a formatter or linter, so reviewers skip it while writing agents still follow it.
-- `files`: globs of the files the rule applies to.
+- `check`: `semantic` needs judgment and goes to a reviewer; `tool` is enforced by a formatter, a linter, or a plain search, which the rule names. Reviewers skip tool rules, writing agents still follow them.
+- `files`: a one-line array of double-quoted globs of the files the rule applies to.
 - `packages`: library rules only; the rule applies when the project references one of these NuGet packages.
-- `alternatives`: optional; rules that take the opposite position.
-- `sources`: optional; where the rule comes from.
+- `alternatives`: optional; rules that take the opposite position. Both rules list each other.
+- `sources`: optional; books, docs, or posts the rule comes from, one per line as `"Title: URL"`.
+
+The first sentence below the title becomes the rule's line in [RULES.md](RULES.md), so it has to stand on its own. A reference to another rule is written as ``rule `rule-id` ``. Example code is formatted the way Fantomas formats it with the repository's [.editorconfig](.editorconfig), except where the violation itself is about layout.
 
 Why this shape:
 
@@ -84,7 +84,7 @@ Why this shape:
 - **Contrasting examples.** A violation with its correction shows the safe path, a near-miss shows the boundary. Examples are marked illustrative so a reviewer does not hunt for that one pattern only.
 - **Short.** Under 170 words of prose per rule, checked by the script. Instruction following degrades as instructions pile up ([IFScale](https://arxiv.org/abs/2507.11538), [When Instructions Multiply](https://aclanthology.org/2025.findings-emnlp.896/)), so writing agents load the one-line index and open a full rule only when they need it.
 - **Tools first.** Whatever Fantomas or FSharpLint checks deterministically is a `tool` rule; models handle the judgment calls.
-- **Generic review instructions once.** Scope, output format, and "no finding is a normal result" live in [prompts/review.md](prompts/review.md), not in every rule.
+- **Generic review instructions in the prompt.** Scope, output format, and "no finding is a normal result" are the same for every rule, so they belong in your review prompt, not in each rule file.
 
 ## Pick your rules
 
@@ -97,42 +97,50 @@ If you sharpen a rule or write a new one, send it back as a pull request.
 
 ## Use the rules
 
-**When an agent writes code**, it reads [RULES.md](RULES.md) first and opens a full rule before it touches that rule's subject. Paste the block from [prompts/write.md](prompts/write.md) into the instructions your agent reads: `AGENTS.md` for Codex and others, `CLAUDE.md` for Claude Code, `.github/instructions/fsharp.instructions.md` for GitHub Copilot, or a rule in `.cursor/rules/` for Cursor.
+The rules are plain Markdown, so you only tell your agent where they are. For example:
 
-**When a model reviews code**, give each reviewer one rule, or a few closely related ones, together with [prompts/review.md](prompts/review.md) and the change. Requests like these work in an agent session:
+**When an agent writes code**, put a short block into the instructions it reads: `AGENTS.md` for Codex and others, `CLAUDE.md` or `.claude/rules/` for Claude Code, `.github/instructions/fsharp.instructions.md` for GitHub Copilot, or `.cursor/rules/` for Cursor.
 
 ```text
-Review my uncommitted F# changes against rules/errors/result-for-decisions.md. Follow prompts/review.md.
-
-Review src/Billing.fs against each semantic rule in rules/types/, one rule at a time,
-and list the findings per rule id.
-
-Start one subagent per semantic rule in rules/design/. Each reviews this branch against main
-with prompts/review.md and its rule. Then merge the findings and drop duplicates.
-
-Implement the import described in issue 12. Follow RULES.md, and read the full rule file
-for every rule whose subject you touch. Afterwards, check your diff against those rules.
+F# code in this repository follows the rules in docs/fsharp-rules/rules/. Before you write F#,
+read docs/fsharp-rules/RULES.md. Before you change code in a rule's subject, read the full rule
+file, including "Do not report". Run Fantomas instead of formatting by hand. When you are done,
+check your diff against every rule whose subject you touched.
 ```
 
-**When you test a rule**, run it against small synthetic changes with [prompts/test-rule.md](prompts/test-rule.md):
+**When a model reviews code**, give each reviewer one rule, or a few closely related ones:
 
 ```text
-Test rules/scope/nest-single-use-bindings.md with prompts/test-rule.md. Write three small cases:
-a violation, a near-miss from its "Do not report" list, and an unrelated change. Run each case
-in a fresh subagent and tell me which verdict was wrong.
+Review my uncommitted F# changes against rules/errors/result-for-decisions.md. Work through its
+Check steps, treat "Do not report" as permitted exceptions, and report only what the change
+introduces, with file, line, and correction. No finding is a normal result.
+
+Start one subagent per semantic rule in rules/design/. Each reviews this branch against main
+with its rule in the same way. Then merge the findings and drop duplicates.
+```
+
+**When you test a rule**, check that a reviewer finds its violations and stays quiet on what it permits:
+
+```text
+Test rules/scope/nest-single-use-bindings.md. Write three small cases with invented names:
+a violation, a near-miss from its "Do not report" list, and an unrelated change. Review each
+case in a fresh subagent against the rule and tell me which verdict was wrong.
 ```
 
 A wrong verdict means the rule is unclear or the case is ambiguous. Fix whichever is wrong.
 
 ## Contributing
 
-New rules, counter-positions, library folders, and sharper wording are all welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), copy [rule-template.md](rule-template.md), and run
+Every F# developer has rules in their head that no style guide writes down. New rules, counter-positions, library folders, and sharper wording are all welcome:
 
-```sh
-dotnet fsi scripts/check.fsx
-```
+1. Start from an existing rule of the same category, keep its sections, and name the file after its `id`.
+2. Disagree with a rule? Write the counter-position as its own rule and link both through `alternatives`; the index then shows them as "Pick one".
+3. Keep the top level coarse. A new library folder under `rules/libraries/` only needs a `README.md` that names the library.
+4. Use invented names in examples; never paste code from your employer or a client.
+5. Test the rule with the three cases above.
+6. Run `dotnet fsi scripts/check.fsx`. It validates every rule (frontmatter, sections, word limit, alternatives, references) and regenerates [RULES.md](RULES.md); commit both. CI runs the same script with `--verify`.
 
-It validates every rule (frontmatter, sections, word limit, alternatives, references between rules) and regenerates [RULES.md](RULES.md). CI runs the same script with `--verify`.
+In the pull request, say where the rule comes from: a book, a library's docs, or your own experience with agents getting it wrong. All three are valid.
 
 ## Sources
 
