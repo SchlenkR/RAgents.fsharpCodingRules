@@ -7,35 +7,53 @@ files: ["**/*.{fs,fsx,fsi}"]
 
 # Require qualified access for generic names
 
-Mark a union `[<RequireQualifiedAccess>]` when a case name alone does not say which type it belongs to, and a module when its function names are generic, instead of prefixing every name by hand. Generic names collide after `open`: the most recently opened case wins, and readers cannot tell the types apart.
+Mark unions and modules with generic names RequireQualifiedAccess instead of relying on unqualified names or manual prefixes.
 
-## Check
+## Look for
 
-1. For every new union: could a case name such as `Pending`, `Failed`, `Empty`, `Custom`, or `Other` plausibly belong to another type in the project?
-2. Look for hand-made prefixes on cases (`OsPending`, `PayFailed`) or on functions (`orderLoad`, `orderSave`).
-3. For every new module with short function names such as `load`, `run`, or `create`: would opening it make call sites ambiguous?
-
-## Report
-
-The union or module, the attribute, and the names without prefixes.
-
-## Do not report
-
-- Specific case names that are unique in the project, such as `CardDeclined`.
-- Modules meant to be opened, such as operator or DSL modules marked `[<AutoOpen>]`.
-
-## Examples (illustrative, not exhaustive)
+Look for generic union cases such as `Pending`, `Failed`, or `Empty`, manually prefixed cases, and module functions named `load`, `run`, or `create`:
 
 ```fsharp
-type OrderStatus = // finding: prefixes instead of the attribute
+type OrderStatus =
     | OsPending
     | OsShipped
 
-// correction
+let initialStatus = OsPending
+```
+
+The prefix is a candidate for qualification supplied by the type itself.
+
+## Check the context
+
+Inspect nearby types and open declarations. Could a case plausibly belong to another project type? Would opening a module make short function names ambiguous? Determine whether a prefix merely repeats its container or carries actual domain meaning. Check whether the module deliberately exports operators or a DSL through `AutoOpen`. Inspect callers, serialized case names, and public signatures before renaming.
+
+## Report when
+
+Report a generic name requiring its container for meaning when unqualified use is allowed, or manual prefixes that only compensate for missing qualification. Explain the ambiguity or repeated container name. Qualification makes the type or module visible at every call without inventing parallel naming conventions; a present-day compiler collision is not required.
+
+## Suggest
+
+Add the attribute and update uses to qualified, unprefixed names:
+
+```fsharp
 [<RequireQualifiedAccess>]
 type OrderStatus =
     | Pending
     | Shipped
+
+let initialStatus = OrderStatus.Pending
 ```
 
-No finding: `type PaymentFailure = CardDeclined | InsufficientFunds` without the attribute.
+For a module, apply the same attribute and call operations as `Order.load`, removing redundant names such as `orderLoad`. Preserve meaningful prefixes. Check wire formats and compatibility before renaming published union cases.
+
+## Do not report
+
+Leave specific case names that identify the outcome themselves:
+
+```fsharp
+type PaymentFailure =
+    | CardDeclined
+    | InsufficientFunds
+```
+
+When these names are distinctive in the project, no container is needed to understand them. Modules deliberately meant to be opened, including operator and DSL modules marked `AutoOpen`, are also permitted.

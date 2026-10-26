@@ -10,40 +10,61 @@ sources:
 
 # Confine mutation to the block that builds a value
 
-Use `let mutable` or a mutable collection only inside the block that computes a value, so that only the finished, immutable result leaves it. Mutation that escapes to a closure, a field, a return value, or module level becomes shared state that changes under its readers.
+Use `let mutable` or a mutable collection only inside the block that computes a value, so that only the finished, immutable result leaves it.
 
-## Check
+## Look for
 
-1. For every `let mutable`, `ResizeArray`, `Dictionary`, or `HashSet`: is it reachable after the value is built, because it is returned, stored, or captured by a returned closure?
-2. Look for module-level mutable values and mutable record fields in domain types.
-3. Is a mutable assigned once by a branch, where an `if` or `match` expression could bind the value directly?
-
-## Report
-
-The escaping or needless mutation and its immutable form.
-
-## Do not report
-
-- Classes that own state with a lifetime (rule `modules-for-logic`).
-- Loops measured to need arrays or spans for performance.
-
-## Examples (illustrative, not exhaustive)
+Look for `let mutable`, mutable domain fields, or mutable collections that remain accessible after construction. Also look for a variable initialized only to be assigned by branches:
 
 ```fsharp
-let mutable label = "" // finding: assigned once by a branch
-if age < 18 then label <- "minor" else label <- "adult"
-let label = if age < 18 then "minor" else "adult" // correction
-
 let indexById (orders: Order list) =
-    let index = Dictionary<OrderId, Order>()
+    let index = System.Collections.Generic.Dictionary<OrderId, Order>()
 
     for order in orders do
         index[order.id] <- order
 
-    index // finding: callers receive the mutable dictionary
+    index
 
-let indexById (orders: Order list) =
-    orders |> List.map (fun order -> order.id, order) |> Map.ofList // correction
+let mutable label = ""
+if age < 18 then label <- "minor" else label <- "adult"
 ```
 
-No finding: a `let mutable` counter inside a `for` loop that returns only the final count.
+## Check the context
+
+1. Follow the mutable value through returns, stored fields, and escaping closures. Is only the completed immutable value exposed?
+2. Identify the owner of intentional state and its required lifetime. Local mutation is not automatically shared mutation.
+3. For branch assignment, check that a direct expression has the same evaluation and scope. For collection changes, compare duplicate-key handling and lookup semantics.
+
+## Report when
+
+Report mutation that unnecessarily escapes the construction block or a temporary mutable variable used solely to choose one value. Explain who can change the exposed state, or why assignment is unnecessary. Resource/state owners covered by rule `modules-for-logic` remain legitimate.
+
+## Suggest
+
+Return an immutable result and bind branch results directly:
+
+```fsharp
+let indexById (orders: Order list) =
+    orders |> List.map (fun order -> order.id, order) |> Map.ofList
+
+let label = if age < 18 then "minor" else "adult"
+```
+
+Here both collection constructions retain the last order for a repeated key. Check equality/comparison behavior before suggesting `Map` for a custom key type.
+
+## Do not report
+
+Leave mutation confined to computing a final value:
+
+```fsharp
+let count items =
+    let mutable count = 0
+
+    for item in items do
+        if qualifies item then
+            count <- count + 1
+
+    count
+```
+
+No mutable storage escapes. Also exclude measured buffer/span requirements and classes that intentionally own state for their lifetime.

@@ -10,33 +10,57 @@ sources:
 
 # Pass a function or a value instead of a single-use interface
 
-Take a dependency as a function parameter, or better as the value it would produce, instead of defining an interface, unless several operations belong together or two real implementations exist. A one-member interface with one implementation adds a type, a class, and a mock for what a function type already says.
+Take a dependency as a function or the value it produces instead of defining an interface for one operation and one implementation.
 
-## Check
+## Look for
 
-1. For every new interface: how many members does it have, and how many implementations outside tests?
-2. Was it introduced only to inject or mock one operation?
-3. Look for interfaces that mirror one class (`IOrderService` next to `OrderService`).
+Look for one-operation interfaces introduced for injection or mocking, and interfaces mirroring one concrete class. Inspect implementation and use together:
 
-## Report
+```fsharp
+type IClock =
+    abstract Now: unit -> System.DateTimeOffset
 
-The interface and the function parameter, value, or record of functions that replaces it.
+type SystemClock() =
+    interface IClock with
+        member _.Now() = System.DateTimeOffset.UtcNow
+
+let isExpired (clock: IClock) expiresAt = expiresAt < clock.Now()
+
+let hasExpired expiresAt = isExpired (SystemClock()) expiresAt
+```
+
+## Check the context
+
+Find all implementations, including object expressions, test doubles, external contracts, and framework registrations. Count cohesive operations rather than just declared members. Trace when and how often callers need the operation: a value can replace one observation, but repeated or deferred observations need a function. Check public API compatibility before removing a type.
+
+## Report when
+
+Report a locally controlled interface that only wraps one operation and has no required object contract, cohesive operation group, or second real implementation. Identify the actual seam and how its caller can express it as data or a function. A test mock alone does not require an interface because a function parameter is also replaceable.
+
+## Suggest
+
+Pass the already available value when one observation is sufficient:
+
+```fsharp
+let isExpired (now: System.DateTimeOffset) expiresAt = expiresAt < now
+
+let hasExpired expiresAt =
+    isExpired System.DateTimeOffset.UtcNow expiresAt
+```
+
+Use `unit -> System.DateTimeOffset` instead when evaluation must remain deferred or repeated. Update composition sites without changing the number or timing of observations. For several related injected operations, consider a cohesive record of functions rather than introducing unrelated parameters.
 
 ## Do not report
 
-- Interfaces that .NET or a framework requires, such as `IDisposable` or `IComparable`.
-- A cohesive group of operations with two real implementations, such as file and blob storage.
-
-## Examples (illustrative, not exhaustive)
+Keep interfaces with meaningful grouped operations and real alternative implementations:
 
 ```fsharp
-type IClock = // finding: one member, one implementation
-    abstract Now: unit -> DateTimeOffset
+type IBlobStore =
+    abstract Read: string -> byte array
+    abstract Write: string * byte array -> unit
+    abstract Delete: string -> unit
 
-let isExpired (clock: IClock) (token: Token) = token.expiresAt < clock.Now()
-
-// correction
-let isExpired (now: DateTimeOffset) (token: Token) = token.expiresAt < now
+let readFrom (store: IBlobStore) key = store.Read key
 ```
 
-No finding: an `IBlobStore` with `read`, `write`, and `delete`, implemented for disk and for cloud storage.
+If project inspection finds disk and remote implementations, this is a real contract. Also retain interfaces required by .NET or a framework, such as `IDisposable` and `IComparable`.

@@ -7,29 +7,53 @@ files: ["**/*.{fs,fsx,fsi}"]
 
 # Use F# collections in domain types and signatures
 
-Give record fields, union cases, and function signatures of domain code immutable F# collections such as `list`, `Map`, and `Set` instead of `ResizeArray`, `Dictionary`, or `HashSet`. A mutable collection inside a shared value can change under every holder, and its type invites the change.
+Use immutable F# collections in domain fields and signatures instead of exposing mutable collection objects.
 
-## Check
+## Look for
 
-1. Look for `ResizeArray`, `List<T>`, `Dictionary`, and `HashSet` in record fields, union cases, and signatures of domain modules.
-2. Is a mutable collection confined to the function that builds an immutable result (rule `confine-mutation`)?
+Look for `ResizeArray`, .NET `List<T>`, `Dictionary`, and `HashSet` in domain records, unions, parameters, and return types:
 
-## Report
+```fsharp
+type Basket = { items: ResizeArray<Item> }
 
-The field or signature and its F# collection type.
+let addItem item basket = basket.items.Add item
+```
+
+The record is immutable, but every holder can mutate the same item collection.
+
+## Check the context
+
+Determine whether this is shared domain data, a local construction buffer, or an infrastructure boundary. Trace aliasing and mutations through callers. Choose list, map, or set according to ordering, key lookup, and uniqueness requirements, preserving comparers and duplicate handling where relevant. Distinguish an intentionally owned concurrent cache from a mutable collection leaked into a domain value.
+
+## Report when
+
+Report mutable collection contracts in domain data when holders can change shared contents and no boundary or owned-state requirement justifies them. Name the exposed mutation and the immutable contract that suits the operation. Read-only record fields do not make referenced mutable collections immutable.
+
+## Suggest
+
+Expose an immutable collection and return replacement domain values:
+
+```fsharp
+type Basket = { items: Item list }
+
+let addItem item basket =
+    { basket with items = basket.items @ [ item ] }
+```
+
+This preserves append order without mutating other holders. Adapt mutation-based callers deliberately; the new function returns an updated basket. Convert mutable input to an immutable snapshot at entry, and choose `Map` or `Set` only when their key and ordering semantics match.
 
 ## Do not report
 
-- Mutable collections confined to the function that builds a result.
-- Interop and infrastructure boundaries, and a `ConcurrentDictionary` for state shared between threads, such as a cache.
-
-## Examples (illustrative, not exhaustive)
+Keep mutable buffers confined to producing an immutable result:
 
 ```fsharp
-type Basket = { items: ResizeArray<Item> } // finding: every holder can change the items
+let values (read: unit -> int) count =
+    let buffer = ResizeArray<int>()
 
-// correction
-type Basket = { items: Item list }
+    for _ in 1..count do
+        buffer.Add(read ())
+
+    buffer |> Seq.toList
 ```
 
-No finding: a cache module that keeps a `ConcurrentDictionary` behind its own functions.
+No buffer escapes. Rule `confine-mutation` governs its scope. Also permit interop and infrastructure boundaries and an owned `ConcurrentDictionary` cache whose synchronization is part of its responsibility.

@@ -8,31 +8,44 @@ alternatives: [annotate-public-signatures]
 
 # Annotate types only where inference needs it
 
-Write a type annotation only where the compiler needs it, not for clarity or out of habit, and decide by removing it and building. An unneeded annotation goes stale after a rename, repeats what tooltips show anyway, and hides which types inference really determines.
+Write a type annotation only where the compiler needs it, not for clarity or out of habit, and decide by removing it and building.
 
-## Check
+## Look for
 
-1. For every new annotation on a `let` parameter or return type: does the body already fix the type through a call, a match on union cases, or a record label?
-2. Remove all candidate annotations together, then build; annotated functions keep their callers typed, so one at a time each looks necessary.
+Look for parameter and return annotations on `let` functions whose bodies appear to determine the types already:
 
-## Report
+```fsharp
+let length (text: string) : int = String.length text
+```
 
-The annotations the build does not need.
+The call to `String.length` already constrains both the input and result types.
+
+## Check the context
+
+1. Resolve calls, record labels, and union cases that constrain the type. Member access alone may require an annotation.
+2. In a scratch copy or isolated checkout, remove candidate annotations together and build the affected project; caller annotations can mask dependencies between them.
+3. Compare inferred signatures and relevant callers. Successful compilation alone does not prove an unchanged contract: annotations may constrain generalization, overloads, or units of measure.
+
+## Report when
+
+Report annotations that the compiler does not need and whose removal preserves the intended signature and behavior under this selected inference preference. Point to the concrete call or case that determines the type. Do not claim inference works without checking it.
+
+## Suggest
+
+Remove the redundant annotations while retaining needed constraints:
+
+```fsharp
+let length text = String.length text
+```
+
+Retain the parameter type when removing it changes the intended generic or overloaded contract.
 
 ## Do not report
 
-- Record fields and union case fields, which are declarations.
-- Member parameters, which F# does not infer, and parameters whose only use is a member access.
-- Annotations that keep a unit of measure.
-
-## Examples (illustrative, not exhaustive)
+Keep an annotation needed to resolve a member access:
 
 ```fsharp
-let total (lines: InvoiceLine list) : decimal = // finding: inference knows both types
-    lines |> List.sumBy _.amount
-
-// correction
-let total lines = lines |> List.sumBy _.amount
+let shout (text: string) = text.ToUpperInvariant()
 ```
 
-No finding: `let shout (text: string) = text.ToUpperInvariant()`, where the member access needs the type.
+Without the parameter type, the receiver is unresolved. Record and union field declarations, required member signatures, and annotations that preserve a unit of measure are also outside this finding.

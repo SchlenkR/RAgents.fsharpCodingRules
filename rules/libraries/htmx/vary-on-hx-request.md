@@ -13,36 +13,57 @@ sources:
 
 Append every request header that decides between fragment and full page, such as `HX-Request`, `HX-History-Restore-Request`, `HX-Target`, or `HX-Request-Type`, to the response's `Vary` header. Without it, browsers and proxies cache one variant under the URL and serve a bare fragment for a page load, or a full page into a fragment target.
 
-## Check
 
-1. For every handler that branches on htmx request headers: does every response of that URL name each of these headers in `Vary`?
-2. Is `Vary` appended to rather than overwritten, so that values such as `Accept-Encoding` survive?
+## Look for
 
-## Report
+Look for a URL selecting different markup from request headers without corresponding `Vary` response values, or code replacing an existing `Vary` field.
 
-The handler, the missing header names, and where to append them.
+```fsharp
+let cart: HttpHandler =
+    fun next ctx ->
+        let content = Cart.view (loadCart ctx)
+
+        if ctx.Request.IsHtmx then
+            htmlView content next ctx
+        else
+            htmlView (Layout.page "Cart" [ content ]) next ctx
+```
+
+## Check the context
+
+1. Trace every header used by the selection logic, including helpers: `HX-Request`, history restore, `HX-Target`, or version-specific `HX-Request-Type` as applicable.
+2. Inspect response middleware and final headers on every variant. Another layer may already append the needed values.
+3. Check the actual cache policy. `no-cache` permits storage with revalidation; it is not equivalent to `no-store`.
+
+## Report when
+
+Report a cacheable variant missing a selecting header from `Vary`, or a write that discards existing variation such as `Accept-Encoding`. Name the differing requests and missing header. A cache may otherwise reuse the wrong representation at the same URL.
+
+## Suggest
+
+Append each selecting header before either branch, preserving existing values. For the example's single selector:
+
+```fsharp
+let cart: HttpHandler =
+    fun next ctx ->
+        ctx.Response.Headers.Append("Vary", "HX-Request")
+        let content = Cart.view (loadCart ctx)
+
+        if ctx.Request.IsHtmx then
+            htmlView content next ctx
+        else
+            htmlView (Layout.page "Cart" [ content ]) next ctx
+```
+
+Append the history/target/request-type headers too when they influence selection. Correct full-page history selection separately under rule `fragment-from-page-view`; `Vary` alone does not fix the chosen markup.
 
 ## Do not report
 
-- Responses sent with `Cache-Control: no-store`, and `Vary: *`.
-- Endpoints that return the same markup for every request.
-
-## Examples (illustrative, not exhaustive)
+Keep one response shape that does not vary with request headers:
 
 ```fsharp
-let cart: HttpHandler = // finding: fragment and page share one cache entry
-    fun next ctx -> htmlView (cartContent ctx) next ctx
-
-// correction
-let varyOn (header: string) : HttpHandler =
-    fun next ctx ->
-        ctx.Response.Headers.Append("Vary", header)
-        next ctx
-
-let cart: HttpHandler =
-    varyOn "HX-Request"
-    >=> varyOn "HX-History-Restore-Request"
-    >=> fun next ctx -> htmlView (cartContent ctx) next ctx
+let cartRows: HttpHandler =
+    fun next ctx -> htmlView (Cart.rows (loadCart ctx)) next ctx
 ```
 
-No finding: a `hx-post` endpoint that always returns the same fragment.
+No header-driven representation choice needs a cache key here. Responses consistently marked `Cache-Control: no-store` or `Vary: *`, and headers already provided by middleware, are also exempt from a missing-header finding.

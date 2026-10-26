@@ -9,36 +9,54 @@ sources:
 
 # Resolve dependency cycles instead of using rec
 
-Declare types and functions before their users, in file order and within a file, and resolve a dependency cycle by restructuring rather than with `module rec`, `namespace rec`, or `and` between unrelated types. F# guarantees acyclic dependencies through compile order; recursive scopes give that guarantee away and let the cycles grow.
+Declare dependencies before their users and resolve avoidable cycles through structure rather than recursive modules or groups.
 
-## Check
+## Look for
 
-1. Look for `module rec` and `namespace rec`.
-2. For every new `type ... and ...` or `let rec ... and ...` group: are the members really mutually recursive, or only declared in the wrong order?
-3. Does a file move in the `.fsproj` only to make a later file visible to an earlier one?
+Look for `module rec`, `namespace rec`, and new `type ... and ...` or `let rec ... and ...` groups. Inspect related file-order changes in the project file:
 
-## Report
+```fsharp
+module rec Billing =
+    let total (invoice: Invoice) = invoice.amounts |> List.sum
 
-The recursive scope and the restructuring: reorder, extract the shared type into an earlier file, or pass a function as a parameter.
+    type Invoice = { amounts: decimal list }
+```
+
+Here recursion makes a later type visible to an earlier function.
+
+## Check the context
+
+Trace dependencies between declarations and files. Can an acyclic order express them directly? If two modules refer to each other, identify shared data or an operation that can become an explicit parameter. Distinguish genuine recursive data and traversal from declarations grouped merely for convenience. A `.fsproj` reorder alone is legitimate when it restores dependency order; inspect the resulting graph before claiming a cycle.
+
+## Report when
+
+Report a recursive scope or group that hides a removable forward reference or architectural cycle. Name the dependency path and a concrete way to break it. Broad recursive scopes make otherwise independent declarations depend on each other and obscure which layer owns the shared concept.
+
+## Suggest
+
+Reorder declarations when the dependency is one-way:
+
+```fsharp
+module Billing =
+    type Invoice = { amounts: decimal list }
+
+    let total (invoice: Invoice) = invoice.amounts |> List.sum
+```
+
+For a real module cycle, extract shared data into an earlier file or pass the needed function explicitly. Update project compile order with the structural change instead of adding another recursive scope.
 
 ## Do not report
 
-- Genuinely recursive data, such as a syntax tree whose expressions contain statements and vice versa.
-- Mutually recursive functions over such data.
-
-## Examples (illustrative, not exhaustive)
+Keep genuinely mutually recursive data:
 
 ```fsharp
-module rec Billing = // finding: rec only hides that Invoice is declared after its user
-    let total (invoice: Invoice) = invoice.lines |> List.sumBy _.amount
+type Expression =
+    | Number of int
+    | Block of Statement list
 
-    type Invoice = { lines: InvoiceLine list }
-
-// correction
-module Billing =
-    type Invoice = { lines: InvoiceLine list }
-
-    let total (invoice: Invoice) = invoice.lines |> List.sumBy _.amount
+and Statement =
+    | Print of Expression
+    | Assign of string * Expression
 ```
 
-No finding: `type Expr = ... | Block of Statement list and Statement = ... | Eval of Expr`.
+Expressions contain statements and statements contain expressions, so declaration reordering cannot remove the dependency. Mutually recursive functions traversing such data are also permitted.

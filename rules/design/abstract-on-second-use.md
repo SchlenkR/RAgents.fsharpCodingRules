@@ -7,41 +7,49 @@ files: ["**/*.{fs,fsx,fsi}"]
 
 # Generalize only for a second real use
 
-Generalize domain code for reuse, with type parameters, interfaces, switches, or shared helpers, only when a second real use exists, and let small incidental blocks repeat until then. Machinery for hypothetical callers makes the one real case harder to read and guesses a future that rarely arrives as expected.
+Generalize domain code for reuse only when a second real use exists, and let small incidental blocks repeat until then.
 
-## Check
+## Look for
 
-1. Does a new abstraction serve consumers that do not exist yet, such as an explicit type parameter used with one type or an interface with one implementation?
-2. Does a new optional parameter, setting, or union case serve a requirement nobody implements?
-3. Does a shared helper parameterize incidental differences between call sites instead of expressing one domain operation?
+Look for explicit type parameters, interfaces, optional switches, configuration settings, union cases, or shared helpers that anticipate another use. Inspect the consumers as well as the declaration:
 
-## Report
+```fsharp
+type Store<'entity, 'key> = { load: 'key -> 'entity option; save: 'entity -> unit }
 
-The abstraction and its concrete form.
+let findCustomer (store: Store<Customer, CustomerId>) id = store.load id
+```
+
+This is a candidate if all constructed stores and consumers specialize the abstraction to customers.
+
+## Check the context
+
+Find actual instantiations, implementations, callers, and requirements across the project. Trace configuration reads and union construction/matching before calling a setting or case hypothetical; a legitimate domain state need not occur in current tests. Check whether switches have a meaningful second setting and whether helper callers implement the same domain operation or merely resemble each other. Separate explicit generalization from ordinary compiler-inferred polymorphism. Check whether the type is a public library contract for external consumers.
+
+## Report when
+
+Report machinery that serves only hypothetical consumers and makes the concrete operation harder to understand. Show the unused degree of freedom and the actual use that remains. For a shared helper, explain which incidental differences its parameters accommodate; repeated syntax alone does not establish a shared concept.
+
+## Suggest
+
+Keep the real operation concrete until another requirement supplies the missing design evidence:
+
+```fsharp
+type CustomerStore = { load: CustomerId -> Customer option; save: Customer -> unit }
+
+let findCustomer (store: CustomerStore) id = store.load id
+```
+
+Update construction sites and annotations together. Remove unused switches, settings, or cases only after checking their consumers and contracts.
 
 ## Do not report
 
-- Generic types the compiler inferred.
-- Domain modeling, and helpers extracted to isolate a decision or an effect (rule `io-at-the-edges`).
-- Library APIs meant for unknown callers.
-
-## Examples (illustrative, not exhaustive)
+Leave abstractions serving distinct existing uses in place:
 
 ```fsharp
-type Store<'entity, 'key> = // finding: only Store<Customer, CustomerId> exists
-    {
-        load: 'key -> Task<'entity option>
-        save: 'entity -> Task<unit>
-        delete: 'key -> Task<unit>
-    }
+let repeat count value = List.replicate count value
 
-// correction
-type CustomerStore =
-    {
-        load: CustomerId -> Task<Customer option>
-        save: Customer -> Task<unit>
-        delete: CustomerId -> Task<unit>
-    }
+let labels = repeat 3 "pending"
+let retries = repeat 3 0
 ```
 
-No finding: a generic `retry` helper used for HTTP calls and for database calls.
+Here the uses already require different element types, and polymorphism is inferred. Also exclude domain modeling, helpers isolating a decision or effect (rule `io-at-the-edges`), and library APIs deliberately designed for unknown callers.

@@ -9,45 +9,58 @@ sources:
 
 # Wrap constrained primitives and identifiers in single-case unions
 
-Give a primitive that carries a domain rule its own single-case union with a private case and a validating constructor that returns `Result`, and give an entity identifier its own union with a total constructor. A validated wrapper guarantees its rule wherever it appears, and an order ID cannot be passed where a customer ID is expected.
+Give constrained primitives private validated wrappers and give confusable entity identifiers distinct single-case unions with total construction.
 
-## Check
+## Look for
 
-1. For every new `string`, `int`, `decimal`, or `Guid` field or parameter: does it carry a format or range rule, or could it be confused with another value of that type?
-2. Does every wrapper with a rule have a `private` case and a constructor that validates instead of throwing?
-3. Look for wrappers without rule or confusion risk; they only add ceremony.
+Look for primitive fields or parameters carrying a repeated range, format, or identity rule. Also inspect wrappers whose cases are public or whose constructors throw instead of validating:
 
-## Report
+```fsharp
+let reserve (seats: int) (customerId: System.Guid) (orderId: System.Guid) =
+    if seats <= 0 then
+        invalidArg (nameof seats) "seats must be positive"
 
-The primitive and its wrapper, or the needless wrapper.
+    seats, customerId, orderId
+```
+
+Any caller can pass invalid seats or swap the two identifiers while satisfying the signature.
+
+## Check the context
+
+Establish the actual invariant and where the value travels. Search for an existing domain wrapper before adding another. Distinguish constrained values from unrestricted primitives, and identifiers that could be confused from local implementation details. Inspect every construction path: hiding the case is useful only if constructors enforce the invariant. Check whether an existing wrapper adds neither validation nor protection against confusion.
+
+## Report when
+
+Report a primitive crossing domain operations with a demonstrated invariant or identity confusion risk, a wrapper that callers can construct invalidly, or an unnecessary wrapper with no such role. Name the specific invalid value or interchangeable identity. A new type should enforce a meaningful distinction rather than just repeat the field name.
+
+## Suggest
+
+Validate constrained values once and use distinct total identifier constructors:
+
+```fsharp
+type SeatCount = private SeatCount of int
+
+module SeatCount =
+    let tryCreate value =
+        if value > 0 then
+            Ok(SeatCount value)
+        else
+            Error "seats must be positive"
+
+type CustomerId = CustomerId of System.Guid
+type OrderId = OrderId of System.Guid
+
+let reserve (seats: SeatCount) (customerId: CustomerId) (orderId: OrderId) = seats, customerId, orderId
+```
+
+Construct at the boundary and handle the returned error. Members or companion functions are both permitted constructor placements. Remove a needless wrapper when it guarantees nothing and no caller needs the distinction.
 
 ## Do not report
 
-- DTOs at the boundary; they convert on entry.
-- Values that never leave one function.
-- Whether the constructor is a member or a companion-module function.
-
-## Examples (illustrative, not exhaustive)
+Keep unconstrained free text as a primitive:
 
 ```fsharp
-let sendInvoice (email: string) invoice = ... // finding: any string is accepted
-
-// correction
-type EmailAddress =
-    private
-    | EmailAddress of string
-
-    member this.Value =
-        let (EmailAddress text) = this
-        text
-
-    static member TryCreate(text: string) =
-        if text.Contains '@' then
-            Ok(EmailAddress text)
-        else
-            Error $"'{text}' is not an email address"
-
-type CustomerId = CustomerId of Guid
+type Note = { text: string }
 ```
 
-No finding: `type Note = { text: string }` for free text without rules.
+There is no format rule or competing identity here. Also permit raw DTO fields converted at entry and values whose meaning never escapes one function; do not demand wrappers solely because a primitive appears.

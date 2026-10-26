@@ -14,31 +14,45 @@ sources:
 
 Write htmx attributes with the helpers of the installed library, such as `_hxGet` in Giraffe.ViewEngine.Htmx, `.hxGet(...)` in Oxpecker.Htmx, or `Hx.get` in Falco.Htmx, and take URLs and target ids from one definition. A raw `"hx-get"` string compiles with any typo, and an id written twice drifts apart.
 
-## Check
 
-1. Look for attribute names starting with `hx-` written as strings, such as `attr "hx-post"` or `Attr.create "hx-target"`.
-2. Is an element id written as a literal both where the element is rendered and in an `hx-target` selector?
-3. Are trigger values free strings where the library offers typed values, such as `HxTrigger` in Giraffe.ViewEngine.Htmx?
+## Look for
 
-## Report
-
-The raw attribute or duplicated literal and the library helper or shared definition.
-
-## Do not report
-
-- Attributes of a custom htmx extension that the helper library lacks, written once in a helper function.
-- Helpers from another library that the project uses on purpose.
-
-## Examples (illustrative, not exhaustive)
+Look for string-built `hx-` attribute names, repeated URL/target-id literals, and free-string values where the installed helper library already offers named values.
 
 ```fsharp
-button [ attr "hx-post" "/cart/items"; attr "hx-target" "#cart" ] [ str "Add" ] // finding
+button [ attr "hx-post" "/cart/items"; attr "hx-target" "#cart" ] [ str "Add" ]
+div [ _id "cart" ] [ Cart.view cart ]
+```
 
-// correction
+## Check the context
+
+1. Identify the installed view library and version. Check which helpers and named trigger/swap values it actually supplies.
+2. Resolve wrappers before treating an attribute as raw: a project helper may already centralize its spelling.
+3. Follow target ids and routes to their rendered elements and endpoint definitions. Distinguish duplicated definitions from deliberate references to shared values.
+
+## Report when
+
+Report an available library helper bypassed with a raw attribute name, a named library value replaced by an incidental string, or independently duplicated target/route definitions. Explain the drift or misspelling the helper/shared definition prevents. A typed attribute name does not guarantee its selector or URL is correct.
+
+## Suggest
+
+Use the installed library's helpers and one definition for the shared target and route. In Giraffe.ViewEngine.Htmx:
+
+```fsharp
 let cartId = "cart"
 
 button [ _hxPost Urls.cartItems; _hxTarget $"#{cartId}" ] [ str "Add" ]
 div [ _id cartId ] [ Cart.view cart ]
 ```
 
-No finding: `attr "hx-chart-range" "30d"` for a custom extension, inside the one helper that renders charts.
+Use that library's named trigger/swap values where provided. Oxpecker and Falco have their own APIs; do not import a second view framework just to copy this syntax.
+
+## Do not report
+
+Keep a centralized attribute helper for a custom extension the library does not cover:
+
+```fsharp
+let chartRange days = attr "hx-chart-range" (string days)
+```
+
+There is no installed helper to use for that extension attribute. Existing deliberate helpers from another installed library are also valid when they provide the same contract; inspect their implementation instead of deciding from a naming convention.

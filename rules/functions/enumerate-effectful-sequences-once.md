@@ -9,33 +9,47 @@ sources:
 
 # Enumerate effectful sequences once
 
-Materialize a sequence that reads files, queries a database, or has other effects into a list or array when more than one consumer needs its elements. A `seq` runs its work again on every enumeration and may return different elements each time.
+Materialize a sequence that reads files, queries a database, or has other effects into a list or array when more than one consumer needs its elements.
 
-## Check
+## Look for
 
-1. Is a sequence backed by I/O, randomness, or mutable state enumerated more than once, for example by `Seq.length` and `Seq.sum`?
-2. Must the consumers see the same elements, and is the sequence finite and small enough to materialize?
-
-## Report
-
-The repeated enumeration and the materialized value the consumers share.
-
-## Do not report
-
-- Pure sequences whose repeated cost is acceptable.
-- Deliberate fresh reads, and streaming code that consumes the sequence once.
-
-## Examples (illustrative, not exhaustive)
+Look for one lazy sequence consumed by several terminal operations when its source reads files, queries storage, uses randomness, or observes mutable state:
 
 ```fsharp
-let summarize (path: string) =
-    let amounts = File.ReadLines path |> Seq.map decimal
-    { count = Seq.length amounts; amount = Seq.sum amounts } // finding: reads the file twice
+let summarize fileName =
+    let amounts = System.IO.File.ReadLines fileName |> Seq.map decimal
+    { count = Seq.length amounts; amount = Seq.sum amounts }
+```
 
-// correction
-let summarize (path: string) =
-    let amounts = File.ReadLines path |> Seq.map decimal |> Seq.toArray
+## Check the context
+
+1. Resolve the source and transformations: does enumeration perform work again, or is this already a materialized collection?
+2. Follow all consumers and check whether they must observe the same elements.
+3. Establish that materialization is finite and reasonably bounded. Check resource lifetime and whether extra eager evaluation changes failure timing or streaming behavior.
+
+## Report when
+
+Report repeated enumeration when consumers require one consistent set of effectful results. In the example, counting and summing open/read the file separately and can see different contents. State the source and the consumers, rather than flagging every repeated `Seq` call.
+
+## Suggest
+
+Materialize once before sharing the results:
+
+```fsharp
+let summarize fileName =
+    let amounts = System.IO.File.ReadLines fileName |> Seq.map decimal |> Seq.toArray
     { count = amounts.Length; amount = Array.sum amounts }
 ```
 
-No finding: two traversals of a list that is already in memory.
+If materialization would be unbounded, suggest computing the required results in one pass. Make the change from streaming to eager work explicit.
+
+## Do not report
+
+Leave multiple traversals over an existing in-memory snapshot:
+
+```fsharp
+let summarize (amounts: decimal list) =
+    { count = amounts.Length; amount = List.sum amounts }
+```
+
+These consumers read the same stored elements. Also exclude deliberately fresh reads and streams with only one enumeration.

@@ -9,32 +9,43 @@ sources:
 
 # Name a repeated distinction with an active pattern
 
-Give a distinction that several matches repeat, such as which plans include an admin area, a name as a complete active pattern, instead of grouping the same cases or testing the same condition in every match. The rule then lives in one place and keeps the compiler's completeness check.
+Give a distinction that several matches repeat, such as which plans include an admin area, a name as a complete active pattern, instead of grouping the same cases or testing the same condition in every match.
 
-## Check
+## Look for
 
-1. Do two or more matches group the same cases or test the same condition to answer the same question?
-2. Would a named pattern make that question visible at each match?
-
-## Report
-
-The repeated grouping and the active pattern that names it.
-
-## Do not report
-
-- A grouping that occurs once.
-- A distinction that is a single case test, where matching the case directly is clear.
-
-## Examples (illustrative, not exhaustive)
+Look for several matches grouping the same union cases to answer the same domain question. Search other consumers of the union, rather than treating the first grouping as a violation:
 
 ```fsharp
-match plan with // finding: the same grouping appears in three functions
-| Plan.Team _
-| Plan.Enterprise _ -> showAdminMenu ()
-| Plan.Free
-| Plan.Personal _ -> ()
+let showNavigation plan =
+    match plan with
+    | Plan.Team _
+    | Plan.Enterprise _ -> showAdminMenu ()
+    | Plan.Free
+    | Plan.Personal _ -> ()
 
-// correction
+let canManageMembers plan =
+    match plan with
+    | Plan.Team _
+    | Plan.Enterprise _ -> true
+    | Plan.Free
+    | Plan.Personal _ -> false
+```
+
+## Check the context
+
+1. Compare the meaning of the groupings, not just their case lists. Do both consumers ask whether the plan includes administration?
+2. Check whether an existing projection or active pattern already names this distinction.
+3. Check that classifying the value is pure and preserves exhaustive coverage when the union changes.
+
+## Report when
+
+Report repeated classification of the same domain distinction when a named complete active pattern would express that question at its consumers. Independent copies can drift when a plan changes. Include the repeated consumers as evidence; a grouping in one match is insufficient.
+
+## Suggest
+
+Name the distinction once, then use that name in the matches:
+
+```fsharp
 let (|WithAdmin|WithoutAdmin|) plan =
     match plan with
     | Plan.Team _
@@ -42,9 +53,24 @@ let (|WithAdmin|WithoutAdmin|) plan =
     | Plan.Free
     | Plan.Personal _ -> WithoutAdmin
 
-match plan with
-| WithAdmin -> showAdminMenu ()
-| WithoutAdmin -> ()
+let canManageMembers plan =
+    match plan with
+    | WithAdmin -> true
+    | WithoutAdmin -> false
 ```
 
-No finding: one match in one function that groups these cases.
+Update the other consumers of this same distinction. Keep unrelated classifications separate.
+
+## Do not report
+
+Leave a single direct classification unchanged:
+
+```fsharp
+match plan with
+| Plan.Team _
+| Plan.Enterprise _ -> showAdminMenu ()
+| Plan.Free
+| Plan.Personal _ -> ()
+```
+
+When this is the only consumer of the grouping, extraction adds a name without removing repeated domain logic. Also leave clear single-case tests and coincidentally identical groups with different meanings unchanged.

@@ -1,6 +1,6 @@
 # F# coding rules for AI agents
 
-AI agents write a lot of F# now, and much of it reads like C# in another syntax: service classes without state, interfaces with one implementation, mutable variables, exceptions for every failure, and comments that narrate the next line. This repository collects coding rules that steer agents, and the models reviewing their work, towards idiomatic F#.
+AI agents write a lot of F# now, and much of it reads like C# in another syntax: service classes without state, interfaces with one implementation, mutable variables, exceptions for every failure, and comments that narrate the next line. This repository gives review agents concrete patterns to investigate, conditions for reporting them, and context-appropriate improvements. Agents that write code can follow the same rules.
 
 The rules are opinions. Some are common F# practice, some are personal taste, some only matter with one library. That is fine: every rule stands on its own, opposing positions sit side by side, and you pick the rules you agree with. Then add your own.
 
@@ -28,38 +28,83 @@ Where opinions split, a rule lists its `alternatives` and the index marks the pa
 
 ## How a rule is built
 
-Every rule is one Markdown file with one concern. It is written as a task a reviewer can carry out, and it doubles as an instruction for an agent that writes code:
+Every rule is one Markdown file about one concern. It starts with the code a reviewer should look for, then explains how to decide whether that candidate deserves a finding. Code examples sit beside the instructions they illustrate.
 
-```markdown
+For example, a resource lifetime check has this shape (see the full [scope-owned-resources](rules/scope/scope-owned-resources.md) rule):
+
+````markdown
 ---
-id: confine-mutation
-category: functions
+id: scope-owned-resources
+category: scope
 check: semantic
 files: ["**/*.{fs,fsx}"]
-sources:
-  - "Don Syme, Notes on learning F#: https://github.com/dsyme/dsyme-presentations/blob/master/design-notes/notes-on-learning-fsharp-1.md"
 ---
 
-# Confine mutation to the block that builds a value
+# Keep a resource alive for the work that uses it
 
-The rule in one sentence. Its reason in one sentence.
+Keep an owned resource alive until the work that reads it has completed.
 
-## Check
+## Look for
 
-1. Numbered steps: what to look for, and which evidence decides.
+Look for a resource disposed by a local scope while returned work still captures it:
 
-## Report
+```fsharp
+let contents (fileName: string) =
+    use reader = System.IO.File.OpenText fileName
+    seq { yield reader.ReadToEnd() }
+```
 
-The shape of a finding: the violation and its correction.
+## Check the context
+
+1. Identify who owns the reader and when it is disposed.
+2. Follow the returned sequence to determine when the read executes.
+3. Check whether resource-dependent work is consumed before scope exit.
+
+## Report when
+
+Report when the read can run after disposal. Here the scope closes the reader
+before the caller can enumerate the sequence.
+
+## Suggest
+
+If callers need lazy reads, let the sequence own its reader. Acquisition then
+happens during enumeration, with a fresh reader for each enumeration:
+
+```fsharp
+let contents (fileName: string) =
+    seq {
+        use reader = System.IO.File.OpenText fileName
+        yield reader.ReadToEnd()
+    }
+```
+
+If callers need an eager snapshot, consume the read inside the original scope
+instead. Choose according to the caller's contract.
 
 ## Do not report
 
-- Permitted exceptions, stated so that they can be decided.
+Eager consumption completes the read before disposal:
 
-## Examples (illustrative, not exhaustive)
-
-A violation marked `// finding`, its correction, and a near-miss that is fine.
+```fsharp
+let contents (fileName: string) =
+    use reader = System.IO.File.OpenText fileName
+    seq { yield reader.ReadToEnd() } |> Seq.toList
 ```
+
+## Finding
+
+Name the resource, its disposal boundary, and the operation that can run later.
+````
+
+The five required sections appear in that order:
+
+- **Look for:** search instructions in prose and a candidate code example. Include consumers when the declaration alone cannot show the relevant relationship. Names and syntax may differ from the example.
+- **Check the context:** the evidence to follow, such as call sites, data flow, ownership, effects, library versions, or framework contracts.
+- **Report when:** the conditions that justify a finding and the reason they matter. A selected style preference is a valid reason; describe it as a preference rather than inventing a runtime defect.
+- **Suggest:** a concrete correction with code and the conditions under which it applies. Explain relevant behavior changes or alternatives when no universal rewrite exists.
+- **Do not report:** permitted cases, including a close code counterexample and the decisive difference.
+
+An optional final **Finding** section can show the rule-specific evidence to include in a report. Omit it when it merely repeats the conditions and suggestion. Generic output fields, review scope, and the instruction that no finding is a normal outcome belong in the review prompt.
 
 The frontmatter fields:
 
@@ -71,18 +116,11 @@ The frontmatter fields:
 - `alternatives`: optional; rules that take the opposite position. Both rules list each other.
 - `sources`: optional; books, docs, or posts the rule comes from, one per line as `"Title: URL"`.
 
-The first sentence below the title becomes the rule's line in [RULES.md](RULES.md), so it has to stand on its own. A reference to another rule is written as ``rule `rule-id` ``. Example code is formatted the way Fantomas formats it with the repository's [.editorconfig](.editorconfig), except where the violation itself is about layout. Examples are fragments: they annotate types they do not define, and they use invented names.
+The first sentence below the title becomes the rule's line in [RULES.md](RULES.md), so it has to stand on its own. A reference to another rule is written as ``rule `rule-id` ``. Format example code with the repository's [.editorconfig](.editorconfig), except when demonstrating a layout violation or an alternative formatter setting. Examples may be fragments; annotate types they do not define and use invented names.
 
-Why this shape:
+Keep rules concise, but include the evidence needed to decide. There is no fixed prose word limit. The checker requires explanatory prose in each section and non-empty fenced code examples in **Look for**, **Suggest**, and **Do not report**. It checks structure, not F# correctness or reviewer accuracy.
 
-- **One concern per file.** A reviewer answers a narrow question better than it applies a style guide, and a single rule can be loaded, tested, and replaced on its own. The AutoCommenter study at Google traced unhelpful comments, among other causes, to guidelines that mixed several topics or depended on contextual exceptions ([paper](https://arxiv.org/abs/2405.13565)); Graphite recommends one specific concern per rule ([docs](https://graphite.com/docs/ai-review-customization)).
-- **Imperative and observable.** "Do X", plus the evidence that shows a violation. Short imperative directives work; vague quality directives such as "be more accurate" only add noise ([GitHub](https://docs.github.com/en/copilot/tutorials/customize-code-review)).
-- **A reason.** One sentence of why lets a model handle cases the examples do not show.
-- **Exceptions instead of hedging.** Precision comes from an explicit "Do not report" list, not from "only report if you are sure". OpenAI tests each review rule with a triggering change, a safe counterexample, and an unrelated change ([post](https://developers.openai.com/blog/custom-code-review-rules-for-codex)).
-- **Contrasting examples.** A violation with its correction shows the safe path, a near-miss shows the boundary. Examples are marked illustrative so a reviewer does not hunt for that one pattern only.
-- **Short.** Under 170 words of prose per rule, checked by the script together with the sections and the three parts of the examples. Instruction following degrades as instructions pile up ([IFScale](https://arxiv.org/abs/2507.11538), [When Instructions Multiply](https://aclanthology.org/2025.findings-emnlp.896/)), so writing agents load the one-line index and open a full rule only when they need it.
-- **Tools first.** Whatever Fantomas or FSharpLint checks deterministically is a `tool` rule; models handle the judgment calls.
-- **Generic review instructions in the prompt.** Scope, output format, and "no finding is a normal result" are the same for every rule, so they belong in your review prompt, not in each rule file.
+A pattern match starts an investigation. It does not prove a violation: a local class may own a resource, a `bind` may be a straight pipeline, and a sequence may already be consumed eagerly. Conversely, follow equivalent relationships through helpers and call sites even when their spelling differs from an example. For conditions that depend on callers, show or inspect the callers instead of claiming "only one use" in a comment.
 
 ## Pick your rules
 
@@ -93,6 +131,21 @@ Why this shape:
 5. Point your agent at the index, as described below.
 
 If you sharpen a rule or write a new one, send it back as a pull request.
+
+## Context budget
+
+The complete catalogue of 87 rules can fit in a single prompt, including all code examples:
+
+| Content | Approximate tokens |
+| --- | ---: |
+| All rule files, including YAML metadata and sources | 53,000 |
+| Rule bodies without YAML metadata and sources | 49,000 |
+| The index (`RULES.md`) alone | 6,000 |
+| One full rule on average | 600 |
+
+These estimates use roughly four characters per token for about 213,000 characters in the rule files. Allow 50,000 to 60,000 tokens for the full catalogue, depending on the model's tokenizer; these are estimates, not model-specific token counts.
+
+Even a mid-sized model with a 128k-token context window can therefore receive the entire selected rule set at once, leaving roughly 70k tokens for system and review instructions, code, and the response. The model's context window determines what fits; parameter count alone does not. Choose one rule from each alternative pair first, as described above. You can load the full selected rules directly, or use the index to load individual rules as needed.
 
 ## Use the rules
 
@@ -107,12 +160,14 @@ file, including "Do not report". Run Fantomas instead of formatting by hand. Whe
 check your diff against every rule whose subject you touched.
 ```
 
-**When a model reviews code**, give each reviewer one rule, or a few closely related ones:
+**When a model reviews code**, load all selected rules if the context budget permits, or give each reviewer one rule or a few closely related ones:
 
 ```text
-Review my uncommitted F# changes against rules/errors/result-for-decisions.md. Work through its
-Check steps, treat "Do not report" as permitted exceptions, and report only what the change
-introduces, with file, line, and correction. No finding is a normal result.
+Review my uncommitted F# changes against rules/errors/result-for-decisions.md. Use Look for
+to find candidates, follow Check the context, and establish the Report when conditions.
+Use Do not report to check close permitted cases. Inspect relevant callers outside the diff
+when needed; missing context does not prove a violation. Report only what the change introduces,
+with file, line, evidence, and a context-appropriate suggestion. No finding is a normal result.
 
 Start one subagent per semantic rule in rules/design/. Each reviews this branch against main
 with its rule in the same way. Then merge the findings and drop duplicates.
@@ -121,9 +176,11 @@ with its rule in the same way. Then merge the findings and drop duplicates.
 **When you test a rule**, check that a reviewer finds its violations and stays quiet on what it permits:
 
 ```text
-Test rules/scope/nest-single-use-bindings.md. Write three small cases with invented names:
-a violation, a near-miss from its "Do not report" list, and an unrelated change. Review each
-case in a fresh subagent against the rule and tell me which verdict was wrong.
+Test rules/scope/nest-single-use-bindings.md. Write small cases with invented names:
+a violation satisfying Report when, a close permitted case from Do not report, and an unrelated
+change. For contextual checks, also try missing evidence and an equivalent pattern written
+differently. Review each case independently against the full rule. Check the verdict and
+whether its explanation identifies the decisive evidence.
 ```
 
 A wrong verdict can come from the reviewer, the rule, or the case. Repeat it with the same context first; if it stays wrong, fix the rule or the case.
@@ -136,8 +193,8 @@ Every F# developer has rules in their head that no style guide writes down. New 
 2. Disagree with a rule? Write the counter-position as its own rule and link both through `alternatives`; the index then shows them as "Pick one".
 3. Keep the top level coarse. A new library folder under `rules/libraries/` only needs a `README.md` that names the library.
 4. Use invented names in examples; never paste code from your employer or a client.
-5. Test the rule with the three cases above.
-6. Run `dotnet fsi scripts/check.fsx` with the .NET 10 SDK. It validates every rule (frontmatter, sections, examples, word limit, alternatives, references) and regenerates [RULES.md](RULES.md); commit both. CI runs the same script with `--verify`.
+5. Evaluate the rule with the cases above, checking both findings and permitted cases.
+6. Run `dotnet fsi scripts/check.fsx` with the .NET 10 SDK. It validates every rule (frontmatter, section order, prose, examples, alternatives, references) and regenerates [RULES.md](RULES.md); commit both. CI runs the same script with `--verify`, checks the script formatting, and runs `dotnet fsi scripts/test-check.fsx` for validator regressions.
 
 In the pull request, say where the rule comes from: a book, a library's docs, or your own experience with agents getting it wrong. All three are valid.
 

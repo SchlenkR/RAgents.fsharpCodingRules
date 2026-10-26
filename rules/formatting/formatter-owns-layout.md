@@ -11,37 +11,47 @@ sources:
 
 Write new code in the layout Fantomas produces with the repository's `.editorconfig`, and change the layout only of lines whose content you change. Hand-made layout drifts from the tool, and whitespace-only hunks hide the real change in a review.
 
-## Check
 
-1. Does the changeset contain hunks that only change indentation, line breaks, or bracket placement of code whose content stays the same?
-2. Does new code deviate from Fantomas output, for example hand-aligned `=`, `->`, or comments, or lines wrapped by hand?
-3. Was the formatter run on a whole file that was not formatted before, pulling unrelated lines into the diff?
+## Look for
 
-## Report
+Look for diff hunks changing only layout of otherwise untouched code, and hand-aligned new bindings that a formatter will immediately rewrite.
 
-The whitespace-only hunk or hand layout, corrected to the original lines or to Fantomas output for the changed lines only.
+```diff
+-let total = lines |> List.sumBy _.amount
++let total =
++    lines |> List.sumBy _.amount
+```
+
+## Check the context
+
+1. Compare tokens before and after the hunk. Is the change semantic, required by nearby edited code, or independent reformatting?
+2. Inspect the configured Fantomas version and `.editorconfig`; use its output to establish the expected layout.
+3. Check whether this is an explicitly separate formatting change. Whole-file formatting can pull old layout into a functional diff even when the author did not edit it manually.
+
+## Report when
+
+Report unrelated layout churn in a functional changeset, explaining which untouched expression was reflowed. Delegate exact indentation and bracket choices to Fantomas. This semantic check concerns review scope and unnecessary diff noise; it does not ask a model to reproduce the formatter's layout rules.
+
+## Suggest
+
+Restore unrelated lines and let Fantomas format new or substantively changed code using the repository configuration:
+
+```fsharp
+let total = lines |> List.sumBy _.amount
+```
+
+If the file needs a broad formatting cleanup, suggest a separately identified formatting change. Do not undo line breaks or indentation that Fantomas requires because the surrounding expression changed.
 
 ## Do not report
 
-- Whitespace changes that Fantomas makes because nearby content changed.
-- A separate commit that only applies the formatter and says so.
+Keep formatter output caused by an actual expression change:
 
-## Examples (illustrative, not exhaustive)
-
-```fsharp
+```diff
 -let total = lines |> List.sumBy _.amount
 +let total =
-+    lines |> List.sumBy _.amount // finding: only re-wrapped
-
-// correction: keep the line as it was
-let total = lines |> List.sumBy _.amount
-
-let id     = 1 // finding: aligned by hand
-let amount = 20m
-
-// correction
-let id = 1
-let amount = 20m
++    lines
++    |> List.filter _.isBillable
++    |> List.sumBy _.amount
 ```
 
-No finding: a line that Fantomas re-wrapped because its expression grew.
+Here the pipeline gained a filtering step, so reflow belongs to the change. A clearly identified change devoted solely to applying the formatter is also permitted; its scope is already explicit.

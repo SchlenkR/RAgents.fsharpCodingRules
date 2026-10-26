@@ -10,37 +10,47 @@ sources:
 
 # Make illegal states unrepresentable
 
-Model a value whose fields are valid only in certain combinations as a union with one case per state, each case carrying only the data that exists in that state. Flags and options that must agree with each other admit combinations no code handles, and the compiler cannot point to them.
+Choose domain data shapes that exclude forbidden combinations rather than relying on flags, optional fields, or string keys to agree at runtime.
 
-## Check
+## Look for
 
-1. For every new or changed record: is there a flag or status next to optional fields that only make sense in one state?
-2. Are there two options of which exactly one, or at most one, may be set?
-3. Is there a `Map<string, _>` for a fixed, known set of keys, such as the fields of a form?
-4. Look for runtime checks guarding such combinations: `if payment.isPaid && payment.paidAt.IsNone`.
+Look for status or boolean fields next to dependent options, options of which only one may be populated, and string-keyed maps representing a fixed schema:
 
-## Report
+```fsharp
+type Payment = { isPaid: bool; paidAt: System.DateTime option }
 
-The type, a forbidden combination it admits, and the type that excludes it.
+let paidWithoutDate = { isPaid = true; paidAt = None }
+```
+
+Also scan runtime guards such as `payment.isPaid && payment.paidAt.IsNone`; they reveal a relationship the type does not encode.
+
+## Check the context
+
+Determine the valid states from domain behavior and constructors. Are fields actually dependent or independently optional? Enumerate at least one forbidden combination admitted by the current type. For a map, verify that keys are a known finite schema rather than user-defined entries. Distinguish domain state from read-only query projections that intentionally mirror storage.
+
+## Report when
+
+Report a domain type that admits a specific contradictory state and can express its legitimate cases directly. Explain the impossible value and the invariant it breaks. For fixed string keys, show the missing or misspelled key the map permits. A union or record should carry the actual invariant rather than merely rename existing flags.
+
+## Suggest
+
+Give each state only the data that exists in it:
+
+```fsharp
+[<RequireQualifiedAccess>]
+type Payment =
+    | Unpaid
+    | Paid of paidAt: System.DateTime
+```
+
+Use a union for exclusive alternatives, adding an explicit absence case when both fields may legitimately be absent. Replace fixed-key maps with named record fields, using options only where absence is valid. Update construction and matching sites rather than preserving a separate status flag.
 
 ## Do not report
 
-- Optional fields that are really independent, such as two optional search filters.
-- Read-only query projections that mirror a table.
-
-## Examples (illustrative, not exhaustive)
+Keep genuinely independent options:
 
 ```fsharp
-type Payment =
-    {
-        isPaid: bool
-        paidAt: DateTime option // finding: isPaid = true with paidAt = None is possible
-    }
-
-// correction
-type Payment =
-    | Unpaid
-    | Paid of paidAt: DateTime
+type SearchFilter = { customer: string option; fromDate: System.DateOnly option }
 ```
 
-No finding: `type SearchFilter = { customer: string option; from: DateOnly option }`.
+Either, both, or neither filter may be selected. Also permit read-only table projections and maps whose key set is genuinely dynamic; no hidden state relationship has been established there.

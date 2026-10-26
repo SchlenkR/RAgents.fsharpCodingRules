@@ -13,29 +13,35 @@ sources:
 
 Write a record, anonymous record, or list either on one line or with the opening bracket on its own line, the content indented one level, and the closing bracket on its own line. Fantomas 8 formats this by default as `fsharp_multiline_bracket_style = aligned`; unlike the older cramped style, no field aligns to the bracket, so renaming a field shifts no other line.
 
-## Check
 
-1. For every multiline record, list, array, or anonymous record: does any element share a line with an opening or closing bracket?
-2. For copy-and-update expressions: does `{ value with` stay together and the closing bracket stand on its own line?
+## Look for
 
-## Report
-
-The bracket placement and the block form.
-
-## Do not report
-
-- Expressions that fit on one line.
-- Files the formatter does not touch, such as generated code.
-
-## Examples (illustrative, not exhaustive)
+Fantomas checks multiline records, anonymous records, lists, and arrays whose delimiters or elements use another layout. With the aligned alternative selected, a block opening on the binding line is a candidate:
 
 ```fsharp
-let customer = { name = "Ada Lovelace" // finding: fields aligned to the bracket
-                 email = "ada@example.com"
-                 city = "London"
-                 isActive = true }
+let customer = {
+    name = "Ada Lovelace"
+    email = "ada@example.com"
+    city = "London"
+    isActive = true
+}
+```
 
-// correction
+## Check the context
+
+1. Confirm this alternative is selected instead of rule `multiline-brackets-stroustrup`.
+2. Check `.editorconfig` for `fsharp_multiline_bracket_style = aligned` and run the project's Fantomas version.
+3. Distinguish one-line expressions and copy-and-update syntax from ordinary multiline blocks. Check generated-file exclusions before applying formatting.
+
+## Report when
+
+This is a tool rule: Fantomas reports layout that differs from the selected aligned output. Semantic reviewers skip bracket-placement findings. The preference avoids field alignment dependent on name length; the formatter decides whether the expression fits on one line and how its continuation is indented.
+
+## Suggest
+
+Use the configured formatter to put the opening and closing delimiters on their own lines:
+
+```fsharp
 let customer =
     {
         name = "Ada Lovelace"
@@ -43,13 +49,16 @@ let customer =
         city = "London"
         isActive = true
     }
-
-let renamed =
-    { customer with
-        name = "Ada King-Noel"
-        email = "ada.king-noel@example.com"
-        city = "Ockham"
-    }
 ```
 
-No finding: `let origin = { x = 0; y = 0 }`.
+For copy-and-update, keep `{ customer with` together and let Fantomas arrange the updates and closing delimiter. Restrict unrelated layout churn according to rule `formatter-owns-layout`.
+
+## Do not report
+
+Keep expressions the formatter leaves on one line:
+
+```fsharp
+let origin = { x = 0; y = 0 }
+```
+
+The multiline preference does not require expanding small values. Generated or excluded files are also exempt; a project selecting the opposing alternative must configure that alternative instead of applying both rules.

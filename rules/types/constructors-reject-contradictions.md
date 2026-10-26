@@ -7,37 +7,52 @@ files: ["**/*.{fs,fsx}"]
 
 # Reject contradictory input in constructors
 
-Make every constructor of a validated type return an error for input it cannot represent faithfully, also for values loaded from a database, instead of guessing a default. A guessed default turns broken data into a plausible state, and every later decision builds on it.
+Make constructors and conversions into validated domain types reject input they cannot represent faithfully instead of silently guessing a valid state.
 
-## Check
+## Look for
 
-1. For every constructor or conversion into a domain type (`TryCreate`, `ofRow`, `fromDto`): does a wildcard branch map unexpected combinations to some valid case?
-2. Look for `Option.map Wrapper` or a direct `Wrapper value` that lifts a loaded value into a validated type without its check.
-3. Does a missing or unknown part of the input silently become a default?
-
-## Report
-
-The tolerant branch and the error case it should return.
-
-## Do not report
-
-- Defaults the domain itself defines, such as no discount when no coupon is given.
-- Test data and scripts.
-
-## Examples (illustrative, not exhaustive)
+Look for wildcard branches, fallback defaults, and direct wrapper construction in `TryCreate`, `ofRow`, or `fromDto` conversions. Include values read from storage:
 
 ```fsharp
-let ofStored (plan: string) (renewsAt: DateTime option) =
+let ofStored (plan: string) (renewsAt: System.DateTime option) =
     match plan, renewsAt with
     | "paid", Some date -> Paid date
-    | _ -> Free // finding: a paid plan without renewal date silently becomes Free
+    | _ -> Free
+```
 
-// correction
-let tryOfStored (plan: string) (renewsAt: DateTime option) =
+A paid plan without a renewal date, an unknown plan, and a valid free plan all become `Free`.
+
+## Check the context
+
+Read the destination type's invariants and the input contract. Enumerate valid combinations rather than assuming the wildcard means missing data. Trace database and DTO conversions through validating constructors; `Option.map Wrapper` can bypass the same checks applied to user input. Determine whether a fallback is an explicit domain default, a documented absence, or an attempt to conceal inconsistent data.
+
+## Report when
+
+Report a conversion that accepts a forbidden combination, bypasses validation, or replaces unknown input with a plausible but unjustified state. Name a concrete input and the false state it produces. Stored data can violate invariants too; silently repairing it makes later decisions rely on fabricated information.
+
+## Suggest
+
+Handle each valid combination explicitly and return an error for the rest:
+
+```fsharp
+let tryOfStored (plan: string) (renewsAt: System.DateTime option) =
     match plan, renewsAt with
     | "paid", Some date -> Ok(Paid date)
     | "free", None -> Ok Free
     | _ -> Error(InvalidPlan(plan, renewsAt))
 ```
 
-No finding: `Coupon.tryParse` returning `None` for an empty field, where no coupon is a valid choice.
+Route wrapped primitives through their validating constructors. Update callers to handle the new failure instead of immediately replacing it with another default; the intended behavior change is that contradictory input is rejected.
+
+## Do not report
+
+Keep defaults the domain actually defines:
+
+```fsharp
+let discountRate coupon =
+    match coupon with
+    | Some rate -> rate
+    | None -> 0m
+```
+
+Here absence explicitly means no discount, rather than a broken discount becoming valid. Also exclude test data and scripts, and optional parsing where an empty field legitimately means no value.

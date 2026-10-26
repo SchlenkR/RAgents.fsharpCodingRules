@@ -12,32 +12,65 @@ sources:
 
 # Use modules for logic and classes only for state with a lifetime
 
-Write logic as functions in modules over records and unions, and define a class only when something owns mutable state, a resource, or a lifetime, or when a framework requires one. A class without such state is a C# habit: it adds a constructor, instances, and injection without adding anything a function lacks.
+Write logic as functions over records and unions, and reserve classes for state, resource ownership, lifetimes, or required framework contracts.
 
-## Check
+## Look for
 
-1. For every new class: does it hold mutable state, a resource (`IDisposable`), or a background process, or does a framework require it?
-2. Look for stateless service classes whose constructor only stores dependencies or settings and whose members are pure logic.
-3. Look for classes that only carry data, where a record would do.
+Look for stateless service classes that capture settings or dependencies, classes used only around a local calculation, and classes containing only data. Inspect construction and consumption:
 
-## Report
+```fsharp
+type PriceCalculator(taxRate: decimal) =
+    member _.Gross(net: decimal) = net * (1m + taxRate)
 
-The class and its replacement: a module with functions that take dependencies as parameters, or a record.
+let total taxRate (amounts: decimal list) =
+    let calculator = PriceCalculator taxRate
+    amounts |> List.sumBy calculator.Gross
+
+type PriceQuote(net: decimal, taxRate: decimal) =
+    member _.Net = net
+    member _.TaxRate = taxRate
+```
+
+## Check the context
+
+Inspect constructors, fields, members, base types, interfaces, and references across the project, including tests and signature files. Follow instances: are they returned, stored, or passed to required contracts? Check framework registration or reflection where indicated. Distinguish immutable inputs from owned mutable state, resources, identity, or background work. Missing callers in a diff do not prove no callers exist.
+
+## Report when
+
+Report when inspected consumers need only functions or data and no object responsibility requires the class. State what the class actually supplies. Here the calculator merely captures a multiplication parameter, and the quote merely carries values. A short scope alone proves nothing; useful resource owners can also be local.
+
+## Suggest
+
+Use functions for calculations and records for data:
+
+```fsharp
+module Price =
+    let gross taxRate net = net * (1m + taxRate)
+
+let total taxRate (amounts: decimal list) =
+    amounts |> List.sumBy (Price.gross taxRate)
+
+type PriceQuote = { net: decimal; taxRate: decimal }
+```
+
+Choose local or module placement under the selected scope preference. Check consumers before changing class construction or equality semantics; a record introduces structural equality. This rule is the alternative to rule `classes-for-configured-logic`.
 
 ## Do not report
 
-- Types a framework instantiates, such as hosted services or controllers.
-- C#-facing facades (rule `csharp-facade`).
-
-## Examples (illustrative, not exhaustive)
+Keep a class that owns a resource and its disposal:
 
 ```fsharp
-type PriceCalculator(taxRate: decimal) = // finding: no state, no resource
-    member _.Gross(net: decimal) = net * (1m + taxRate)
+type TextSource(fileName: string) =
+    let reader = System.IO.File.OpenText fileName
 
-// correction
-module Price =
-    let gross (taxRate: decimal) (net: decimal) = net * (1m + taxRate)
+    member _.Read() = reader.ReadToEnd()
+
+    interface System.IDisposable with
+        member _.Dispose() = reader.Dispose()
+
+let contents fileName =
+    use source = new TextSource(fileName)
+    source.Read()
 ```
 
-No finding: a `RateLimiter` class with a `let mutable` token count, a timer, and `IDisposable`.
+The local instance manages an open reader. Also retain necessary mutable-state owners, framework-instantiated types, and C# facades covered by rule `csharp-facade`.

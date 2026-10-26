@@ -7,30 +7,35 @@ files: ["**/*.{fs,fsx}"]
 
 # Spell out every case of your own unions
 
-Write every case of a union defined in your code base in a match, grouping cases with the same result as or-patterns, instead of collecting them in a `| _ ->` branch. A new case then shows up as a compiler warning at every match instead of silently taking the wildcard branch.
+Write every case of a union defined in your code base in a match, grouping cases with the same result as or-patterns, instead of collecting them in a `| _ ->` branch.
 
-## Check
+## Look for
 
-1. For every new or changed match over a union from this code base: does `| _ ->` or a catch-all name such as `| other ->` stand for one or more cases?
-2. Does the catch-all hide cases that need different handling?
-
-## Report
-
-The wildcard and the or-pattern that lists its cases.
-
-## Do not report
-
-- Matches over open sets: strings, numbers, or unions owned by an external library.
-- Matches over tuples of booleans or other fixed combinations, where no case can be added.
-
-## Examples (illustrative, not exhaustive)
+Look for matches on a union owned by the project where `_` or a catch-all binding accepts remaining cases:
 
 ```fsharp
 match failure with
 | ImportFailure.InvalidRow row -> showRowError row
-| _ -> showErrorPage () // finding: three cases hidden here
+| _ -> showErrorPage ()
+```
 
-// correction
+A catch-all can also be hidden inside tuple/nested patterns; inspect the type of the matched component.
+
+## Check the context
+
+1. Resolve the union declaration and enumerate its cases. Establish that this project controls additions to it.
+2. Identify the cases currently covered by the fallback, accounting for guards and earlier patterns.
+3. Preserve payload bindings or use of the original value in the fallback. Check completeness after replacing it; guarded patterns alone may still leave cases uncovered.
+
+## Report when
+
+Report an unguarded catch-all that hides owned domain cases. Explicit coverage allows the compiler to identify the match when a case is added. Name the cases the wildcard currently stands for; do not claim a new behavior is necessary merely because they share a result.
+
+## Suggest
+
+List the remaining cases as or-patterns:
+
+```fsharp
 match failure with
 | ImportFailure.InvalidRow row -> showRowError row
 | ImportFailure.FileMissing
@@ -38,4 +43,16 @@ match failure with
 | ImportFailure.Timeout -> showErrorPage ()
 ```
 
-No finding: `match statusCode with | 200 -> Ok body | code -> Error code`.
+Keep the existing fallback behavior for those cases. If it needs payloads, use explicit case branches or compatible bindings rather than discarding information.
+
+## Do not report
+
+Leave fallbacks over an open set unchanged:
+
+```fsharp
+match statusCode with
+| 200 -> Ok body
+| code -> Error code
+```
+
+Numbers and strings cannot be enumerated as project-owned union cases. Also exclude externally owned unions and tuples of fixed boolean combinations where adding a domain case is impossible.

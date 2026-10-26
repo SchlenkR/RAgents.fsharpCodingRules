@@ -7,35 +7,59 @@ files: ["**/*.{fs,fsx,fsi}"]
 
 # Return a union when None has several reasons
 
-Return a union with one case per outcome instead of an `option` when a lookup can fail for different reasons that callers or logs need to tell apart. A `None` that means unknown, expired, and used up at once loses the reason before anyone can react to it.
+Return named outcomes instead of option when different reasons for absence require different caller behavior or diagnostic information.
 
-## Check
+## Look for
 
-1. For every new function that returns an `option`: how many different conditions produce `None`?
-2. Does a caller or a log message need to know which one it was?
-
-## Report
-
-The function and the union that names each outcome.
-
-## Do not report
-
-- Lookups with a single reason for absence, such as a key missing from a map.
-- Several reasons that get the same reaction everywhere, with no log that needs them.
-
-## Examples (illustrative, not exhaustive)
+Look for several branches producing `None`, especially lookup functions that combine not found, expiry, and exhausted limits:
 
 ```fsharp
-let tryFindDiscount (code: string) : Discount option = ... // finding: None for unknown, expired, and used up
+let tryFindDiscount today code (discounts: Map<string, Discount>) =
+    match Map.tryFind code discounts with
+    | None -> None
+    | Some discount when discount.expiresAt < today -> None
+    | Some discount when discount.remaining = 0 -> None
+    | Some discount -> Some discount
+```
 
-// correction
+The result erases which of three conditions occurred.
+
+## Check the context
+
+Read callers, logs, tests, and requirements to establish whether anyone needs the distinction. Several internal branches alone do not justify a larger return type. Check whether callers repeat the lookup or infer a reason from partial data because the option lost it. If diagnostic information is already retained reliably at the appropriate boundary, do not invent an additional reporting requirement.
+
+## Report when
+
+Report when distinct relevant outcomes collapse into `None` before a caller can react or a required diagnostic can be produced. Name the outcomes and the actual differing reaction or diagnostic requirement. Without that evidence, multiple paths to absence can be an intentional simplification.
+
+## Suggest
+
+Return the relevant outcomes with any data their consumers need:
+
+```fsharp
+[<RequireQualifiedAccess>]
 type DiscountLookup =
     | Valid of Discount
     | Unknown
-    | Expired of expiredOn: DateOnly
+    | Expired of expiredOn: System.DateOnly
     | UsedUp
 
-let findDiscount (code: string) : DiscountLookup = ...
+let findDiscount today code (discounts: Map<string, Discount>) =
+    match Map.tryFind code discounts with
+    | None -> DiscountLookup.Unknown
+    | Some discount when discount.expiresAt < today -> DiscountLookup.Expired discount.expiresAt
+    | Some discount when discount.remaining = 0 -> DiscountLookup.UsedUp
+    | Some discount -> DiscountLookup.Valid discount
 ```
 
-No finding: `Map.tryFind sku prices`, where `None` only means that the SKU has no price.
+Update callers to make the required distinction. Preserve branch priority when several failure conditions apply, and include only outcomes that actually matter.
+
+## Do not report
+
+Keep option for a single meaningful absence:
+
+```fsharp
+let tryFindPrice sku (prices: Map<string, decimal>) = Map.tryFind sku prices
+```
+
+`None` only means the key has no price. Several internal reasons may also share one option result when every caller intentionally treats them identically and no diagnostic needs to distinguish them.

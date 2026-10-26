@@ -9,32 +9,37 @@ sources:
 
 # Start independent awaits together
 
-Bind independent asynchronous calls with `and!`, which current FSharp.Core supports in `task` and FsToolkit in `taskResult`, or start their tasks before the first `let!`, instead of awaiting them one after the other. Sequential awaits of calls that do not depend on each other add up their waiting times for nothing.
+Bind independent asynchronous calls with `and!`, which current FSharp.Core supports in `task` and FsToolkit in `taskResult`, or start their tasks before the first `let!`, instead of awaiting them one after the other.
 
-## Check
+## Look for
 
-1. Look for consecutive `let!` where the second call uses nothing from the first.
-2. Can the calls run at the same time, or do they share a connection or context that forbids it?
-
-## Report
-
-The sequential awaits and their `and!` form.
-
-## Do not report
-
-- Calls on one connection or context that does not support concurrent use, such as an EF Core `DbContext`.
-- Calls whose order matters for their side effects.
-
-## Examples (illustrative, not exhaustive)
+Look for consecutive awaits where the second operation is only started after the first finishes, although its inputs do not use the first result:
 
 ```fsharp
 task {
     let! customer = loadCustomer customerId
-    let! orders = loadOrders customerId // finding: waits for customer without using it
+    let! orders = loadOrders customerId
     return summarize customer orders
 }
+```
 
-// correction
+If both tasks were created earlier, sequentially awaiting their handles may already overlap the work.
+
+## Check the context
+
+1. Find actual start points, data dependencies, and dependencies through side effects.
+2. Check connection/context sharing, ordering requirements, concurrency limits, and whether the second call is permitted when the first fails.
+3. Verify the builder/compiler supports the proposed `and!`, including its error and cancellation behavior. `Task<Result>` concurrency may change which effects run and which error is returned.
+
+## Report when
+
+Report serialized start of independent operations when concurrent execution is allowed and the added waiting time serves no required ordering or failure policy. Lack of a direct variable reference alone is insufficient evidence. State why both starts are safe and identify any intended change from not starting the second operation after a first-operation failure.
+
+## Suggest
+
+With a compatible task builder, start the independent operations together:
+
+```fsharp
 task {
     let! customer = loadCustomer customerId
     and! orders = loadOrders customerId
@@ -42,4 +47,18 @@ task {
 }
 ```
 
-No finding: `let! order = loadOrder orderId` followed by `let! customer = loadCustomer order.customerId`.
+Alternatively create both tasks before awaiting either, while ensuring every owned task's completion/failure remains observed. Preserve an explicit failure policy for the concurrent work.
+
+## Do not report
+
+Leave awaits where the second call depends on the first result:
+
+```fsharp
+task {
+    let! order = loadOrder orderId
+    let! customer = loadCustomer order.customerId
+    return summarizeOrder customer order
+}
+```
+
+Also exclude calls sharing a connection or context that forbids concurrency, required effect ordering, and already-started tasks whose work overlaps.

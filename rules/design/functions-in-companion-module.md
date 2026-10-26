@@ -10,35 +10,58 @@ sources:
 
 # Keep types as data and functions in a companion module
 
-Define records and unions as plain data and put their functions, including construction and projections, in a module of the same name directly after the type, such as `Invoice.total`. Data and behavior stay separate, every function is curried and pipeable, and the types read as a compact domain model.
+Define records and unions as plain data and put their functions, including construction and projections, in a module of the same name directly after the type.
 
-## Check
+## Look for
 
-1. For every new member on a record or union: is it more than an interface implementation or override that .NET requires?
-2. Do the functions for a type live in a module named after it, placed after the type?
-
-## Report
-
-The member and its module function.
-
-## Do not report
-
-- Interface implementations and overrides required by .NET, such as `IComparable`.
-- Static members that operators or serializers need.
-
-## Examples (illustrative, not exhaustive)
+Look for ordinary behavior members on records or unions, including projections, constructors, and state transitions. Also look for type-specific functions scattered through unrelated modules:
 
 ```fsharp
 type Invoice =
     {
-        lines: InvoiceLine list
+        amounts: decimal list
     }
 
-    member this.Total = this.lines |> List.sumBy _.amount // finding: behavior on the data type
+    member this.Total = this.amounts |> List.sum
 
-// correction
-module Invoice =
-    let total (invoice: Invoice) = invoice.lines |> List.sumBy _.amount
+let amountDue (invoice: Invoice) = invoice.Total
 ```
 
-No finding: `interface IComparable with ...` on a type used as a sort key.
+## Check the context
+
+Determine whether a member implements a required .NET contract, an override, or a static operation required by operators or a serializer. Inspect callers and signature files before moving behavior. Identify the companion module and check that it can appear directly after the type without introducing dependency cycles.
+
+## Report when
+
+Report ordinary record or union behavior outside its companion module when this preference is selected. Show which member or displaced function belongs with the type's functions. Keeping data declarations compact and functions curried makes the API consistent; an ordinary member is a preference violation even when it computes correctly.
+
+## Suggest
+
+Keep the data declaration and place its functions immediately after it:
+
+```fsharp
+type Invoice = { amounts: decimal list }
+
+module Invoice =
+    let total (invoice: Invoice) = invoice.amounts |> List.sum
+
+let amountDue invoice = Invoice.total invoice
+```
+
+Move construction and transitions similarly, preserving validation and updating callers and signatures. This rule is the alternative to rule `members-for-own-data`.
+
+## Do not report
+
+Keep members needed to implement a .NET contract:
+
+```fsharp
+type TextSource(fileName: string) =
+    let reader = System.IO.File.OpenText fileName
+
+    member _.Read() = reader.ReadToEnd()
+
+    interface System.IDisposable with
+        member _.Dispose() = reader.Dispose()
+```
+
+`Dispose` must implement the interface. This class also owns a resource rather than being a data-only record or union. Retain required overrides and static members needed by operators or serializers; their contract cannot be met by an ordinary module function.

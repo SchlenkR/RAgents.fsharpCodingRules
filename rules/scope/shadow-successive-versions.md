@@ -7,39 +7,51 @@ files: ["**/*.{fs,fsx}"]
 
 # Shadow successive versions of a value
 
-Rebind a value under the same name when each step replaces the previous version, instead of numbering the names or reassigning a mutable variable. Shadowing makes the outdated version unreachable, so no later line can use it by mistake.
+Rebind successive replacements under the same name when later code needs only the current version.
 
-## Check
+## Look for
 
-1. Look for numbered or prefixed versions of one value: `order1` and `order2`, `newCart`, `updatedState`, `tmp`.
-2. Look for a `let mutable` that is reassigned in sequence, outside a loop.
+Look for numbered or prefixed versions such as `order1`, `updatedCart`, and `finalState`, and mutable bindings reassigned in a straight-line sequence:
 
-## Report
+```fsharp
+let amountDue discount taxRate net =
+    let amount1 = net - discount
+    let amount2 = amount1 * (1m + taxRate)
+    amount2
+```
 
-The chain, corrected to repeated `let` or `let!` bindings of the same name.
+Each binding here is another version of the same amount.
+
+## Check the context
+
+Read all later uses of each version. Is an earlier value still needed for comparison, logging, rollback, or another branch? Check whether a step changes the value's meaning or type, such as parsing text into a number. For mutation, distinguish a linear replacement chain from a loop or a closure that intentionally shares mutable state. Shadowing must not turn captured mutable state into a snapshot.
+
+## Report when
+
+Report version names or sequential reassignments when each old value becomes obsolete and all later uses should refer to the latest version. Explain that relationship rather than flagging a name in isolation. Shadowing removes access to the stale binding without introducing reassignment.
+
+## Suggest
+
+Give each replacement the same immutable name:
+
+```fsharp
+let amountDue discount taxRate net =
+    let amount = net - discount
+    let amount = amount * (1m + taxRate)
+    amount
+```
+
+Use repeated `let!` in a computation expression when each replacement is bound from an effectful or fallible step. Preserve effect order and ensure earlier values are not still needed.
 
 ## Do not report
 
-- Versions that are both used later, such as `before` and `after` in a comparison.
-- Steps that change what a value means, such as text parsed into a number; they need different names.
-
-## Examples (illustrative, not exhaustive)
+Keep distinct versions when the operation compares them:
 
 ```fsharp
-taskResult {
-    let! cart = loadCart cartId
-    let! updatedCart = cart |> Cart.tryAddItem item // finding: cart stays usable below
-    let! finalCart = updatedCart |> Cart.tryApplyCoupon coupon
-    return finalCart
-}
-
-// correction
-taskResult {
-    let! cart = loadCart cartId
-    let! cart = cart |> Cart.tryAddItem item
-    let! cart = cart |> Cart.tryApplyCoupon coupon
-    return cart
-}
+let change discount net =
+    let before = net
+    let after = net - discount
+    before, after
 ```
 
-No finding: `let previous = state` and `let next = step state`, both compared in a test.
+Both values are part of the result, so shadowing would hide required information. Also use different names for values with different meanings, such as raw text and a parsed count, even when one is derived from the other.

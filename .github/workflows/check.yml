@@ -16,3 +16,4 @@ jobs:
       - run: dotnet tool restore
       - run: dotnet fantomas --check scripts
       - run: dotnet fsi scripts/check.fsx --verify
+      - run: dotnet fsi scripts/test-check.fsx

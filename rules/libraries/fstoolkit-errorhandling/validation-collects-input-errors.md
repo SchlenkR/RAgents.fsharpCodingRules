@@ -10,33 +10,39 @@ sources:
 
 # Collect input errors with validation, fail fast in workflows
 
-Use `validation { }` with `let!` and `and!` where all errors of independent fields should be reported together, typically when building a domain value from user input, and use `result` or `taskResult` with sequential `let!` everywhere else. Failing fast in a form hides the other field errors; collecting in a workflow runs steps after one they depend on failed.
+Use `validation { }` with `let!` and `and!` where all errors of independent fields should be reported together, typically when building a domain value from user input, and use `result` or `taskResult` with sequential `let!` everywhere else.
 
-## Check
+## Look for
 
-1. For every constructor of a domain value from several input fields: does it stop at the first invalid field?
-2. In every `validation { }`: are all independent checks in one `let! ... and! ...` group, or does a later sequential `let!` stop collection?
-3. Look for `validation` or `and!` in workflows whose steps depend on each other.
-
-## Report
-
-The expression and its validation or fail-fast form.
-
-## Do not report
-
-- Checks that depend on an earlier one, such as a password confirmation after the password.
-
-## Examples (illustrative, not exhaustive)
+Look for constructors checking independent input fields with sequential result binds, and validation expressions splitting independent checks across successive bind groups:
 
 ```fsharp
-let tryCreateCustomer input = // finding: an invalid name hides an invalid email
+let tryCreateCustomer input =
     result {
         let! name = Name.tryCreate input.name
         let! email = Email.tryCreate input.email
         return { name = name; email = email }
     }
+```
 
-// correction
+Also inspect workflow `validation`/`and!` groups that may run operations despite another step failing.
+
+## Check the context
+
+1. Determine the contract: should one response include all independent field errors, or must later workflow actions stop after failure?
+2. Trace dependencies between checks. Independence means a check can meaningfully run without another check's successful output.
+3. Check error types and grouping: `validation` accumulates within a `let! ... and! ...` group; later dependent binds cannot collect errors from checks that never run.
+4. Inspect effects. Independent pure validation is different from starting concurrent workflow I/O.
+
+## Report when
+
+Report fail-fast construction when independent field errors must be returned together, or accumulating workflow steps that should be fail-fast. Explain the required error policy and the checks/actions it affects. The presence of several fields alone does not establish a requirement to collect errors.
+
+## Suggest
+
+Group independent field validation with the validation builder:
+
+```fsharp
 let tryCreateCustomer input =
     validation {
         let! name = Name.tryCreate input.name
@@ -45,4 +51,19 @@ let tryCreateCustomer input =
     }
 ```
 
-No finding: `taskResult` that loads a customer and then charges the card.
+This intentionally changes the error result from the first error to collected errors; update the consuming contract accordingly. Use sequential `result`/`taskResult` binds for workflows whose later actions require earlier success.
+
+## Do not report
+
+Leave a dependent workflow sequential:
+
+```fsharp
+let charge customerId =
+    taskResult {
+        let! customer = Customers.tryLoad customerId
+        let! receipt = Payments.tryCharge customer.card
+        return receipt
+    }
+```
+
+Charging requires a successfully loaded customer and should not run after failure. Also leave dependent validation, such as a check requiring a successfully parsed value, after that successful bind.

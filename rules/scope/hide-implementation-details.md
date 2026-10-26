@@ -11,31 +11,52 @@ sources:
 
 # Hide what is not part of a module's purpose
 
-Mark helpers that only serve their own module `private`, and give a library with many internals a signature file that states its public surface. Every public function is an API that someone may start to use, which turns each later change of it into a breaking one.
+Mark module-only helpers private and choose a library's public surface deliberately, using signature files when many internals need hiding.
 
-## Check
+## Look for
 
-1. For every new public function or value: does code outside its module use it, or is it meant to?
-2. For every library project: is the public surface chosen on purpose, through `private`, `internal`, or `.fsi` files?
+Look for public bindings that appear to serve only another operation in the same module. Inspect libraries whose public functions mirror every implementation detail:
 
-## Report
+```fsharp
+module Keys =
+    let normalize (key: string) = key.Trim().ToLowerInvariant()
 
-The helper and its `private` or signature-file form.
+    let lookup table key = table |> Map.tryFind (normalize key)
+```
+
+`normalize` is a candidate helper; its presence beside `lookup` does not prove that no external caller needs it.
+
+## Check the context
+
+Find callers across modules, tests, and signature files, and inspect the intended API. Unknown consumers of a published library require compatibility evidence, not just repository search results. Check whether tests deliberately call helpers directly. For a library with many internals, inspect whether accessibility or signatures already express its selected public surface.
+
+## Report when
+
+Report a helper exposed by default although its inspected purpose and consumers are module-local. For a library surface, identify concrete internal operations accidentally exposed rather than demanding a signature file solely because none exists. Deliberate visibility keeps callers from depending on details that need to change with the implementation.
+
+## Suggest
+
+Restrict a module-local helper while retaining its public consumer:
+
+```fsharp
+module Keys =
+    let private normalize (key: string) = key.Trim().ToLowerInvariant()
+
+    let lookup table key = table |> Map.tryFind (normalize key)
+```
+
+For a library with many internals, expose the intended operations in `.fsi` files and compile each signature before its implementation. Use `internal` when callers within the assembly need the operation. Check compatibility before narrowing a published API. This rule is the alternative to rule `no-access-modifiers`.
 
 ## Do not report
 
-- Functions that tests call directly, in projects that test them on purpose.
-- Scripts.
-
-## Examples (illustrative, not exhaustive)
+Keep intentionally consumed operations visible:
 
 ```fsharp
-let normalize (key: string) = key.Trim().ToLowerInvariant() // finding: only lookup uses it
+module Keys =
+    let normalize (key: string) = key.Trim().ToLowerInvariant()
 
-let lookup table key = table |> Map.tryFind (normalize key)
-
-// correction
-let private normalize (key: string) = key.Trim().ToLowerInvariant()
+module Import =
+    let normalizedKeys keys = keys |> List.map Keys.normalize
 ```
 
-No finding: a public `parse` function that other modules call.
+`normalize` serves another module. Also exclude scripts and helpers that the project's testing approach deliberately tests directly.
